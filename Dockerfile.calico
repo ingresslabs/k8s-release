@@ -1,4 +1,4 @@
-FROM golang:1.23 AS builder
+FROM golang:1.23
 
 # Define ARGs
 ARG CALICO_VERSION
@@ -7,6 +7,7 @@ ARG CALICO_GIT_URL
 # Set environment variables
 ENV CALICO_VERSION=${CALICO_VERSION}
 ENV CALICO_GIT_URL=${CALICO_GIT_URL}
+ENV PACKAGE_NAME=github.com/projectcalico/calico
 
 ENV GO111MODULE=on
 ENV GOPATH=/go
@@ -67,10 +68,15 @@ RUN mkdir -p /calico/bin && \
     find /calico -path "*/cni-plugin/*" -name "main.go" && \
     # Build the CNI plugin components directly
     cd /calico && \
-    CGO_ENABLED=0 go build -v -o /calico/bin/calico ./cni-plugin/cmd/calico && \
+    # Create build info
+    export GIT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0-dev") && \
+    export GIT_DESCRIPTION=$(git describe --tags --dirty --always 2>/dev/null || echo "v0.0.0-dev") && \
+    export DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && \
+    export GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown") && \
+    CGO_ENABLED=0 go build -ldflags "-X main.VERSION=${GIT_VERSION}" -v -o /calico/bin/calico ./cni-plugin/cmd/calico && \
     # For calico-ipam, we need to find where it's located in this version
     if [ -d "/calico/cni-plugin/cmd/ipam" ]; then \
-        CGO_ENABLED=0 go build -v -o /calico/bin/calico-ipam ./cni-plugin/cmd/ipam; \
+        CGO_ENABLED=0 go build -ldflags "-X main.VERSION=${GIT_VERSION}" -v -o /calico/bin/calico-ipam ./cni-plugin/cmd/ipam; \
     elif [ -d "/calico/cni-plugin/internal/pkg/ipam" ]; then \
         # If it's not a separate binary but part of the main one, create a symlink
         ln -sf /calico/bin/calico /calico/bin/calico-ipam; \
@@ -78,7 +84,7 @@ RUN mkdir -p /calico/bin && \
         # Try to find it elsewhere
         IPAM_DIR=$(find /calico -path "*/ipam/cmd" -type d | head -1); \
         if [ -n "$IPAM_DIR" ]; then \
-            CGO_ENABLED=0 go build -v -o /calico/bin/calico-ipam $IPAM_DIR; \
+            CGO_ENABLED=0 go build -ldflags "-X main.VERSION=${GIT_VERSION}" -v -o /calico/bin/calico-ipam $IPAM_DIR; \
         else \
             # Create a symlink as fallback
             ln -sf /calico/bin/calico /calico/bin/calico-ipam; \
@@ -86,11 +92,18 @@ RUN mkdir -p /calico/bin && \
     fi && \
     # Build the other components
     cd /calico/kube-controllers && \
-    CGO_ENABLED=0 go build -v -o /calico/bin/calico-kube-controllers ./cmd/kube-controllers/ && \
+    CGO_ENABLED=0 go build -ldflags "-X main.VERSION=${GIT_VERSION}" -v -o /calico/bin/calico-kube-controllers ./cmd/kube-controllers/ && \
     cd /calico/node && \
-    CGO_ENABLED=0 go build -v -o /calico/bin/calico-node ./cmd/calico-node/ && \
+    export GO_LDFLAGS_NODE="-X ${PACKAGE_NAME}/node/pkg/lifecycle/startup.VERSION=${GIT_VERSION} \
+    -X ${PACKAGE_NAME}/node/buildinfo.GitVersion=${GIT_DESCRIPTION} \
+    -X ${PACKAGE_NAME}/node/buildinfo.BuildDate=${DATE} \
+    -X ${PACKAGE_NAME}/node/buildinfo.GitRevision=${GIT_COMMIT}" && \
+    CGO_ENABLED=0 go build -ldflags "$GO_LDFLAGS_NODE" -v -o /calico/bin/calico-node ./cmd/calico-node/ && \
+    export GO_LDFLAGS_FELIX="-X ${PACKAGE_NAME}/felix/buildinfo.GitVersion=${GIT_DESCRIPTION} \
+    -X ${PACKAGE_NAME}/felix/buildinfo.BuildDate=${DATE} \
+    -X ${PACKAGE_NAME}/felix/buildinfo.GitRevision=${GIT_COMMIT}" && \
     cd /calico/felix && \
-    CGO_ENABLED=0 go build -v -o /calico/bin/calico-felix ./cmd/calico-felix/
+    CGO_ENABLED=0 go build -ldflags "$GO_LDFLAGS_FELIX" -v -o /calico/bin/calico-felix ./cmd/calico-felix/
 
 # List the built binaries for verification
 RUN ls -la /calico/bin/
