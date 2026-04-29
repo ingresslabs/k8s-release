@@ -1,13 +1,40 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # This script creates Debian and RPM packages from a binary
 # Usage: ./package-builder.sh <binary_name> <version> <description>
 
-BINARY_NAME=$1
-VERSION=$2
-DESCRIPTION=$3
+BINARY_NAME=${1:?binary name is required}
+VERSION=${2:?version is required}
+DESCRIPTION=${3:?description is required}
 PACKAGE_TYPE=${PACKAGE_TYPE:-deb}  # Default to deb if not specified
+PKG_MAINTAINER=${PKG_MAINTAINER:-Kubernetes Packager <maintainer@example.com>}
+PKG_LICENSE=${PKG_LICENSE:-Apache-2.0}
+PKG_URL=${PKG_URL:-https://kubernetes.io}
+PKG_ARCH=${PKG_ARCH:-amd64}
+SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-0}
+
+case "${PKG_ARCH}" in
+    amd64|x86_64)
+        DEB_ARCH=amd64
+        RPM_ARCH=x86_64
+        ;;
+    arm64|aarch64)
+        DEB_ARCH=arm64
+        RPM_ARCH=aarch64
+        ;;
+    *)
+        echo "ERROR: unsupported PKG_ARCH '${PKG_ARCH}'. Supported values: amd64, x86_64, arm64, aarch64."
+        exit 1
+        ;;
+esac
+
+if ! [[ "${SOURCE_DATE_EPOCH}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: SOURCE_DATE_EPOCH must be a Unix timestamp, got '${SOURCE_DATE_EPOCH}'."
+    exit 1
+fi
+
+BUILD_DATE=$(date -u -d "@${SOURCE_DATE_EPOCH}" '+%a %b %d %Y' 2>/dev/null || date -u '+%a %b %d %Y')
 
 # Strip 'v' prefix from version if present (Debian requires versions to start with a digit)
 VERSION=${VERSION#v}
@@ -29,8 +56,8 @@ Package: $BINARY_NAME
 Version: $VERSION
 Section: utils
 Priority: optional
-Architecture: amd64
-Maintainer: Kubernetes Packager <maintainer@example.com>
+Architecture: $DEB_ARCH
+Maintainer: $PKG_MAINTAINER
 Description: $DESCRIPTION
 EOF
 
@@ -99,23 +126,31 @@ esac
 # Always create the output directory
 mkdir -p /output
 
+# Preserve local config files during package upgrades.
+CONFFILES=$(find "${PKG_DIR}/etc" -type f 2>/dev/null | sed "s#^${PKG_DIR}##" || true)
+if [ -n "${CONFFILES}" ]; then
+    printf '%s\n' "${CONFFILES}" > "${PKG_DIR}/DEBIAN/conffiles"
+fi
+
+# Normalize mtimes so dpkg/rpm archives are stable for the same source input.
+if touch -d "@${SOURCE_DATE_EPOCH}" "${PKG_DIR}" >/dev/null 2>&1; then
+    find "${PKG_DIR}" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+fi
+
 # Build packages based on PACKAGE_TYPE
 if [ "$PACKAGE_TYPE" = "deb" ] || [ "$PACKAGE_TYPE" = "all" ]; then
     # Create the Debian package
     echo "Building Debian package for ${BINARY_NAME}..."
-    dpkg-deb --build ${PKG_DIR}
+    DEB_FILE="/output/${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
+    dpkg-deb --root-owner-group --build ${PKG_DIR} "${DEB_FILE}"
     echo "Debian package build completed"
 
-    # Move the Debian package to the output directory
-    echo "Moving Debian package to output directory..."
-    mv ${PKG_DIR}.deb /output/${BINARY_NAME}_${VERSION}_amd64.deb
-
     # Verify the Debian package exists
-    if [ -f "/output/${BINARY_NAME}_${VERSION}_amd64.deb" ]; then
-        echo "Debian package successfully created at /output/${BINARY_NAME}_${VERSION}_amd64.deb"
+    if [ -f "${DEB_FILE}" ]; then
+        echo "Debian package successfully created at ${DEB_FILE}"
         # Copy the Debian package to the root directory for easier access
-        cp /output/${BINARY_NAME}_${VERSION}_amd64.deb /${BINARY_NAME}_${VERSION}_amd64.deb
-        chmod 644 /${BINARY_NAME}_${VERSION}_amd64.deb
+        cp "${DEB_FILE}" "/${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
+        chmod 644 "/${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
     else
         echo "ERROR: Debian package creation failed!"
         [ "$PACKAGE_TYPE" = "all" ] || exit 1
@@ -173,7 +208,15 @@ esac
 
 # Create the tarball
 cd /tmp
-tar -czf ${RPM_BUILD_DIR}/SOURCES/${BINARY_NAME}-${VERSION}.tar.gz ${BINARY_NAME}-${VERSION}
+if touch -d "@${SOURCE_DATE_EPOCH}" "${TARBALL_DIR}" >/dev/null 2>&1; then
+    find "${TARBALL_DIR}" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+fi
+tar --sort=name \
+    --mtime="@${SOURCE_DATE_EPOCH}" \
+    --owner=0 \
+    --group=0 \
+    --numeric-owner \
+    -czf ${RPM_BUILD_DIR}/SOURCES/${BINARY_NAME}-${VERSION}.tar.gz ${BINARY_NAME}-${VERSION}
 
 # Create the spec file
 cat > ${RPM_BUILD_DIR}/SPECS/${BINARY_NAME}.spec << EOF
@@ -182,11 +225,11 @@ Version:        ${VERSION}
 Release:        1%{?dist}
 Summary:        ${DESCRIPTION}
 
-License:        Apache-2.0
-URL:            https://kubernetes.io
+License:        ${PKG_LICENSE}
+URL:            ${PKG_URL}
 Source0:        ${BINARY_NAME}-${VERSION}.tar.gz
 
-BuildArch:      x86_64
+BuildArch:      ${RPM_ARCH}
 Requires:       systemd
 
 %description
@@ -304,12 +347,16 @@ fi
 # Finish the spec file
 cat >> ${RPM_BUILD_DIR}/SPECS/${BINARY_NAME}.spec << EOF
 %changelog
-* $(date '+%a %b %d %Y') Kubernetes Packager <maintainer@example.com> - ${VERSION}-1
+* ${BUILD_DATE} ${PKG_MAINTAINER} - ${VERSION}-1
 - Initial package
 EOF
 
 # Build the RPM package
-rpmbuild --define "_topdir ${RPM_BUILD_DIR}" -bb ${RPM_BUILD_DIR}/SPECS/${BINARY_NAME}.spec
+rpmbuild \
+    --define "_topdir ${RPM_BUILD_DIR}" \
+    --define "source_date_epoch ${SOURCE_DATE_EPOCH}" \
+    --define "clamp_mtime_to_source_date_epoch 1" \
+    -bb ${RPM_BUILD_DIR}/SPECS/${BINARY_NAME}.spec
 
 # Copy the RPM to the output directory
 find ${RPM_BUILD_DIR}/RPMS -name "*.rpm" -exec cp {} /output/ \;
@@ -334,7 +381,7 @@ ls -la /output
 
 # List package contents for Debian packages
 if [ "$PACKAGE_TYPE" = "deb" ] || [ "$PACKAGE_TYPE" = "all" ]; then
-    DEB_FILE="/output/${BINARY_NAME}_${VERSION}_amd64.deb"
+    DEB_FILE="/output/${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
     if [ -f "$DEB_FILE" ]; then
         echo "Contents of $DEB_FILE:"
         dpkg -c "$DEB_FILE"
@@ -357,11 +404,11 @@ fi
 
 # Copy message based on what was built
 if [ "$PACKAGE_TYPE" = "deb" ]; then
-    echo "Copied package to: /${BINARY_NAME}_${VERSION}_amd64.deb"
+    echo "Copied package to: /${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
 elif [ "$PACKAGE_TYPE" = "rpm" ] && [ -n "${RPM_FILE}" ]; then
     echo "Copied package to: /$(basename ${RPM_FILE})"
 elif [ "$PACKAGE_TYPE" = "all" ]; then
-    DEB_FILE="/${BINARY_NAME}_${VERSION}_amd64.deb"
+    DEB_FILE="/${BINARY_NAME}_${VERSION}_${DEB_ARCH}.deb"
     RPM_BASE=""
     if [ -n "${RPM_FILE}" ]; then
         RPM_BASE=$(basename ${RPM_FILE})

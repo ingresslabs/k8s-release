@@ -1,5 +1,33 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+PKG_MAINTAINER=${PKG_MAINTAINER:-Kubernetes Packager <maintainer@example.com>}
+PKG_LICENSE=${PKG_LICENSE:-Apache-2.0}
+PKG_URL=${PKG_URL:-https://kubernetes.io}
+PKG_ARCH=${PKG_ARCH:-amd64}
+SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-0}
+
+case "${PKG_ARCH}" in
+  amd64|x86_64)
+    DEB_ARCH=amd64
+    RPM_ARCH=x86_64
+    ;;
+  arm64|aarch64)
+    DEB_ARCH=arm64
+    RPM_ARCH=aarch64
+    ;;
+  *)
+    echo "ERROR: unsupported PKG_ARCH '${PKG_ARCH}'. Supported values: amd64, x86_64, arm64, aarch64."
+    exit 1
+    ;;
+esac
+
+if ! [[ "${SOURCE_DATE_EPOCH}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: SOURCE_DATE_EPOCH must be a Unix timestamp, got '${SOURCE_DATE_EPOCH}'."
+  exit 1
+fi
+
+BUILD_DATE=$(date -u -d "@${SOURCE_DATE_EPOCH}" '+%a %b %d %Y' 2>/dev/null || date -u '+%a %b %d %Y')
 
 # Create output directories
 mkdir -p /certs /output
@@ -156,8 +184,8 @@ Package: ${pkg}
 Version: ${VERSION}
 Section: utils
 Priority: optional
-Architecture: amd64
-Maintainer: Kubernetes Packager <maintainer@example.com>
+Architecture: ${DEB_ARCH}
+Maintainer: ${PKG_MAINTAINER}
 Description: Kubernetes TLS certificates for ${pkg}
 EOF
 
@@ -183,9 +211,11 @@ for pkg in "kubernetes-ca-certs" "kubernetes-apiserver-certs" "kubernetes-contro
   if [ "$PACKAGE_TYPE" = "deb" ] || [ "$PACKAGE_TYPE" = "all" ]; then
     # Create the Debian package
     echo "Building Debian package for ${pkg}..."
-    dpkg-deb --build ${PKG_DIR}
-    mv ${PKG_DIR}.deb /output/${pkg}_${VERSION}_amd64.deb
-    echo "Debian package created: /output/${pkg}_${VERSION}_amd64.deb"
+    if touch -d "@${SOURCE_DATE_EPOCH}" "${PKG_DIR}" >/dev/null 2>&1; then
+      find "${PKG_DIR}" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+    fi
+    dpkg-deb --root-owner-group --build ${PKG_DIR} "/output/${pkg}_${VERSION}_${DEB_ARCH}.deb"
+    echo "Debian package created: /output/${pkg}_${VERSION}_${DEB_ARCH}.deb"
   fi
   
   if [ "$PACKAGE_TYPE" = "rpm" ] || [ "$PACKAGE_TYPE" = "all" ]; then
@@ -207,7 +237,15 @@ for pkg in "kubernetes-ca-certs" "kubernetes-apiserver-certs" "kubernetes-contro
     
     # Create the tarball
     cd /tmp
-    tar -czf ${RPM_BUILD_DIR}/SOURCES/${pkg}-${VERSION}.tar.gz ${pkg}-${VERSION}
+    if touch -d "@${SOURCE_DATE_EPOCH}" "${TARBALL_DIR}" >/dev/null 2>&1; then
+      find "${TARBALL_DIR}" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+    fi
+    tar --sort=name \
+      --mtime="@${SOURCE_DATE_EPOCH}" \
+      --owner=0 \
+      --group=0 \
+      --numeric-owner \
+      -czf ${RPM_BUILD_DIR}/SOURCES/${pkg}-${VERSION}.tar.gz ${pkg}-${VERSION}
     
     # Create the spec file
     cat > ${RPM_BUILD_DIR}/SPECS/${pkg}.spec << EOF
@@ -215,10 +253,10 @@ Name:           ${pkg}
 Version:        ${VERSION}
 Release:        1%{?dist}
 Summary:        Kubernetes TLS certificates for ${pkg}
-License:        Apache-2.0
-URL:            https://kubernetes.io
+License:        ${PKG_LICENSE}
+URL:            ${PKG_URL}
 Source0:        ${pkg}-${VERSION}.tar.gz
-BuildArch:      x86_64
+BuildArch:      ${RPM_ARCH}
 
 %description
 Kubernetes TLS certificates for ${pkg}
@@ -252,12 +290,16 @@ find /etc/kubernetes/pki -name "*.key" -exec chmod 600 {} \; 2>/dev/null || true
 find /var/lib/kubelet -name "*.key" -exec chmod 600 {} \; 2>/dev/null || true
 
 %changelog
-* $(date '+%a %b %d %Y') Kubernetes Packager <maintainer@example.com> - ${VERSION}-1
+* ${BUILD_DATE} ${PKG_MAINTAINER} - ${VERSION}-1
 - Initial package
 EOF
 
     # Build the RPM package
-    rpmbuild --define "_topdir ${RPM_BUILD_DIR}" -bb ${RPM_BUILD_DIR}/SPECS/${pkg}.spec
+    rpmbuild \
+      --define "_topdir ${RPM_BUILD_DIR}" \
+      --define "source_date_epoch ${SOURCE_DATE_EPOCH}" \
+      --define "clamp_mtime_to_source_date_epoch 1" \
+      -bb ${RPM_BUILD_DIR}/SPECS/${pkg}.spec
     
     # Copy the RPM to the output directory
     find ${RPM_BUILD_DIR}/RPMS -name "*.rpm" -exec cp {} /output/ \;

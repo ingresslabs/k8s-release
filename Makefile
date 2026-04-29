@@ -28,6 +28,20 @@ CALICO_GIT_URL ?= https://github.com/projectcalico/calico.git
 # Define the certificate version to use
 CERT_VERSION ?= 1.0.0
 
+# Digest-pinned build inputs. Override these when moving to a new upstream toolchain.
+KUBE_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72
+ETCD_GO_IMAGE ?= golang:1.20-bookworm@sha256:9fa9101141c01e9440216d32eb2b380b3c3079bea07aeab3546020cc91b3662c
+FLANNEL_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72
+CALICO_GO_IMAGE ?= golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+RUNTIME_IMAGE ?= debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
+DEBIAN_SNAPSHOT ?= 20250201T000000Z
+
+# Package metadata and reproducibility controls.
+PKG_MAINTAINER ?= Kubernetes Packager <maintainer@example.com>
+PKG_LICENSE ?= Apache-2.0
+PKG_URL ?= https://kubernetes.io
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
+
 # Help target: Displays available targets and variables
 help:
 	@echo "Usage: make <target>"
@@ -46,6 +60,8 @@ help:
 	@echo "  build-kubectl           Build only kubectl"
 	@echo "  build-flannel           Build only flannel"
 	@echo "  build-calico            Build only calico"
+	@echo "  check-pinned-inputs     Verify Dockerfiles use digest-pinned base images"
+	@echo "  verify-packages         Verify packages in the output directory"
 	@echo "  archive                 Create a git archive with branch and commit in the name"
 	@echo "  bundle                  Create a git bundle with branch and commit in the name"
 	@echo "  clean                   Clean up generated files"
@@ -62,9 +78,17 @@ help:
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
-	@echo "  PACKAGE_TYPE            Package type to build (deb or rpm, default: deb)"
+	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
 	@echo "  COMPOSE_DOCKER_CLI_BUILD Enable Docker CLI build (set to 1)"
 	@echo "  DOCKER_BUILDKIT          Enable BuildKit for Docker builds (set to 1)"
+	@echo "  KUBE_GO_IMAGE            Digest-pinned Go image for Kubernetes builds"
+	@echo "  ETCD_GO_IMAGE            Digest-pinned Go image for etcd builds"
+	@echo "  FLANNEL_GO_IMAGE         Digest-pinned Go image for Flannel builds"
+	@echo "  CALICO_GO_IMAGE          Digest-pinned Go image for Calico builds"
+	@echo "  RUNTIME_IMAGE            Digest-pinned runtime/package image"
+	@echo "  DEBIAN_SNAPSHOT          Debian snapshot timestamp for apt package resolution"
+	@echo "  SOURCE_DATE_EPOCH        Timestamp used for reproducible package metadata"
+	@echo "  PKG_MAINTAINER           Maintainer string embedded into packages"
 	@echo ""
 
 # Check if required tools are installed and functional
@@ -75,6 +99,14 @@ check-tools:
 	@docker compose version >/dev/null 2>&1 || { echo >&2 "Error: Docker Compose is not installed or not functioning correctly."; exit 1; }
 	@docker buildx version >/dev/null 2>&1 || { echo >&2 "Error: Docker Buildx is not installed or not functioning correctly."; exit 1; }
 	@echo "All required tools are installed and functional."
+
+.PHONY: check-pinned-inputs
+check-pinned-inputs:
+	@./scripts/check-pinned-inputs.sh
+
+.PHONY: verify-packages
+verify-packages:
+	@./scripts/verify-packages.sh output
 
 # Define BUILD_INFO to calculate and display build duration
 define BUILD_INFO
@@ -98,9 +130,13 @@ endif
 # Define the default platform based on $KUBE_BUILDER
 ifeq ($(KUBE_BUILDER_ARM64),1)
     DOCKER_DEFAULT_PLATFORM := linux/arm64
+    DEFAULT_PKG_ARCH := arm64
 else
     DOCKER_DEFAULT_PLATFORM := linux/amd64
+    DEFAULT_PKG_ARCH := amd64
 endif
+
+PKG_ARCH ?= $(DEFAULT_PKG_ARCH)
 
 # Define the package type (deb or rpm)
 PACKAGE_TYPE ?= deb
@@ -119,6 +155,17 @@ define DOCKER_ARGS
     FLANNEL_VERSION=$(FLANNEL_VERSION) \
     CALICO_GIT_URL=$(CALICO_GIT_URL) \
     CALICO_VERSION=$(CALICO_VERSION) \
+    KUBE_GO_IMAGE='$(KUBE_GO_IMAGE)' \
+    ETCD_GO_IMAGE='$(ETCD_GO_IMAGE)' \
+    FLANNEL_GO_IMAGE='$(FLANNEL_GO_IMAGE)' \
+    CALICO_GO_IMAGE='$(CALICO_GO_IMAGE)' \
+    RUNTIME_IMAGE='$(RUNTIME_IMAGE)' \
+    DEBIAN_SNAPSHOT=$(DEBIAN_SNAPSHOT) \
+    SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
+    PKG_MAINTAINER='$(PKG_MAINTAINER)' \
+    PKG_LICENSE='$(PKG_LICENSE)' \
+    PKG_URL='$(PKG_URL)' \
+    PKG_ARCH=$(PKG_ARCH) \
     DOCKER_DEFAULT_PLATFORM=$(DOCKER_DEFAULT_PLATFORM) \
     PACKAGE_TYPE=$(PACKAGE_TYPE)
 endef

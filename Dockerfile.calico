@@ -1,4 +1,17 @@
-FROM golang:1.23 AS builder
+# syntax=docker/dockerfile:1.7
+ARG GO_IMAGE=golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+ARG RUNTIME_IMAGE=debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
+ARG DEBIAN_SNAPSHOT=20250201T000000Z
+
+FROM ${GO_IMAGE} AS builder
+ARG DEBIAN_SNAPSHOT
+RUN set -eux; \
+    . /etc/os-release; \
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME} main\n" > /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-updates main\n" >> /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
 
 # Define ARGs
 ARG CALICO_VERSION
@@ -96,7 +109,15 @@ RUN mkdir -p /calico/bin && \
 RUN ls -la /calico/bin/
 
 # Stage 2: Runtime stage
-FROM debian:bullseye-slim
+FROM ${RUNTIME_IMAGE}
+ARG DEBIAN_SNAPSHOT
+RUN set -eux; \
+    . /etc/os-release; \
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME} main\n" > /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-updates main\n" >> /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
 
 # Define ARG again for the second stage
 ARG CALICO_VERSION

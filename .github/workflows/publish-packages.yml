@@ -20,16 +20,33 @@ on:
         required: false
         default: 'v3.28.0'
       package_type:
-        description: 'Package type (deb or rpm)'
+        description: 'Package type (deb, rpm, or all)'
         required: false
         default: 'deb'
         type: choice
         options:
           - deb
           - rpm
+          - all
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
 
 jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify pinned Docker inputs
+        run: make check-pinned-inputs
+
   build:
+    needs: validate-inputs
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -52,6 +69,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install package verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
       - name: Build ${{ matrix.component }}
         run: |
           KUBE_VERSION=${{ github.event.inputs.kube_version || 'v1.32.2' }} \
@@ -61,6 +83,40 @@ jobs:
           PACKAGE_TYPE=${{ github.event.inputs.package_type || 'deb' }} \
           DOCKER_COMPOSE="docker compose" \
           make build-${{ matrix.component }}
+
+      - name: Verify generated packages
+        run: ./scripts/verify-packages.sh output
+
+      - name: Generate checksums and manifest
+        run: ./scripts/generate-release-metadata.sh output "${{ matrix.component }}"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: output
+          format: spdx-json
+          output-file: output/${{ matrix.component }}.spdx.json
+          upload-artifact: false
+
+      - name: Prepare attestation subjects
+        run: |
+          mkdir -p attestation-subjects
+          find output -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} attestation-subjects/ \;
+
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: attestation-subjects/*
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign packages with keyless Sigstore
+        run: |
+          for pkg in output/*.deb output/*.rpm; do
+            [ -f "$pkg" ] || continue
+            cosign sign-blob --yes --bundle "${pkg}.sigstore.json" "$pkg"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -84,7 +140,8 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir -p release-artifacts
-          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) | xargs -I{} cp {} release-artifacts/
+          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" \) | xargs -I{} cp {} release-artifacts/
+          find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) -print0 | sort -z | xargs -0 sha256sum > release-artifacts/SHA256SUMS
 
       - name: Upload combined artifacts
         uses: actions/upload-artifact@v4
@@ -104,20 +161,24 @@ jobs:
           cp release-artifacts/*.rpm rpm/ || true
           
       - name: Create Debian repository
-        if: ${{ github.event.inputs.package_type == 'deb' || github.event.inputs.package_type == null }}
+        if: ${{ github.event.inputs.package_type == 'deb' || github.event.inputs.package_type == 'all' || github.event.inputs.package_type == null }}
         run: |
           cd debian
-          apt-get update && apt-get install -y dpkg-dev
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev
           dpkg-scanpackages main /dev/null > main/Packages
+          test -s main/Packages
           cat main/Packages
           gzip -k main/Packages
           
       - name: Create RPM repository
-        if: ${{ github.event.inputs.package_type == 'rpm' }}
+        if: ${{ github.event.inputs.package_type == 'rpm' || github.event.inputs.package_type == 'all' }}
         run: |
           cd rpm
-          apt-get update && apt-get install -y createrepo-c
+          sudo apt-get update
+          sudo apt-get install -y createrepo-c
           createrepo .
+          test -f repodata/repomd.xml
           
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -125,36 +186,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
           
-      - name: Publish to GitHub Packages
+      - name: Publish package repository bundle to GHCR
         run: |
-          # First upload as artifact for easy download
-          echo "Uploading package repositories as artifacts"
           mkdir -p package-repositories
           cp -r debian/ rpm/ package-repositories/
-          
-          # Then publish packages to GitHub Packages
-          echo "Publishing packages to GitHub Packages registry"
-          for pkg in release-artifacts/*.deb release-artifacts/*.rpm; do
-            if [ -f "$pkg" ]; then
-              pkg_name=$(basename $pkg)
-              pkg_version=$(echo $pkg_name | grep -oP '(?<=_)[0-9]+\.[0-9]+\.[0-9]+(?=_)')
-              if [ -z "$pkg_version" ]; then
-                pkg_version="${{ github.event.inputs.kube_version || 'v1.32.2' }}"
-                pkg_version="${pkg_version#v}"
-              fi
-              
-              echo "Publishing $pkg_name with version $pkg_version"
-              
-              # Use GitHub API to publish the package
-              curl -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Accept: application/vnd.github.v3+json" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary @"$pkg" \
-                "https://api.github.com/orgs/$(echo ${{ github.repository }} | cut -d '/' -f 1)/packages/generic/kubernetes-packages/$pkg_version/$pkg_name"
-            fi
-          done
+          (
+            cd package-repositories
+            find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          )
+          tar -czf kubernetes-package-repositories.tar.gz -C package-repositories .
+          version="${{ github.event.inputs.kube_version || 'v1.32.2' }}"
+          version="${version#v}"
+          repo=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          oras push "ghcr.io/${repo}/kubernetes-packages:${version}" \
+            --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            kubernetes-package-repositories.tar.gz:application/vnd.kubekattle.k8s-release.repositories.v1.tar+gzip \
+            package-repositories/SHA256SUMS:text/plain
           
       - name: Upload package repositories as artifacts
         uses: actions/upload-artifact@v4

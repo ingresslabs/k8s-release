@@ -1,5 +1,18 @@
+# syntax=docker/dockerfile:1.7
+ARG GO_IMAGE=golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72
+ARG RUNTIME_IMAGE=debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
+ARG DEBIAN_SNAPSHOT=20250201T000000Z
+
 # Stage 1: Builder stage
-FROM golang:1.23 AS builder
+FROM ${GO_IMAGE} AS builder
+ARG DEBIAN_SNAPSHOT
+RUN set -eux; \
+    . /etc/os-release; \
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME} main\n" > /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-updates main\n" >> /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
 
 # Define ARGs
 ARG FLANNEL_VERSION
@@ -34,7 +47,15 @@ RUN git clone ${FLANNEL_GIT_URL} /flannel && \
 RUN ls -l /flannel/dist/
 
 # Stage 2: Runtime stage
-FROM debian:bullseye-slim
+FROM ${RUNTIME_IMAGE}
+ARG DEBIAN_SNAPSHOT
+RUN set -eux; \
+    . /etc/os-release; \
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME} main\n" > /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-updates main\n" >> /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
 
 # Define ARG again for the second stage
 ARG FLANNEL_VERSION
