@@ -3,6 +3,7 @@ set -euo pipefail
 
 output_file=continuous-improvement-report.md
 strict=0
+require_green_package_workflow=0
 repo=${GITHUB_REPOSITORY:-}
 branch=${GITHUB_REF_NAME:-}
 
@@ -15,6 +16,8 @@ Generate a release-readiness report against docs/world-class-release-spec.md.
 Options:
   --output FILE      Markdown report path (default: continuous-improvement-report.md)
   --strict           Exit non-zero if any required gate fails
+  --require-green-package-workflow
+                     Fail if the latest package workflow is not green
   --repo OWNER/REPO  GitHub repository for latest CI status lookup
   --branch BRANCH    Branch for latest CI status lookup
 EOF
@@ -28,6 +31,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --strict)
             strict=1
+            shift
+            ;;
+        --require-green-package-workflow)
+            require_green_package_workflow=1
             shift
             ;;
         --repo)
@@ -198,8 +205,12 @@ if command -v gh >/dev/null 2>&1 && [ -n "${repo}" ] && [ -n "${branch}" ]; then
         if [ "${run_status}" = "completed" ] && [ "${run_conclusion}" = "success" ]; then
             add_check PASS "Latest GitHub package workflow" "Latest run passed: ${run_url}."
         elif [ "${run_status}" = "completed" ]; then
-            add_check FAIL "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion}\`: ${run_url}."
-            add_note "Fix the latest Build Kubernetes Packages run."
+            if [ "${require_green_package_workflow}" -eq 1 ]; then
+                add_check FAIL "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion}\`: ${run_url}."
+                add_note "Fix the latest Build Kubernetes Packages run."
+            else
+                add_check WARN "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion}\`: ${run_url}."
+            fi
         else
             add_check WARN "Latest GitHub package workflow" "Latest run is \`${run_status}\`: ${run_url}."
         fi

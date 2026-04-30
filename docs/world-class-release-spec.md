@@ -28,7 +28,11 @@ make continuous-improvement
 ```
 
 The loop produces `continuous-improvement-report.md`. A release is ready only
-when the report has no failed gates and the GitHub package workflow is green.
+when the report has no failed gates and the GitHub package workflow is green:
+
+```bash
+./scripts/continuous-improvement.sh --strict --require-green-package-workflow
+```
 
 ## Maturity Levels
 
