@@ -173,17 +173,46 @@ cython_debug/
 output/
 continuous-improvement-report.md
 
-# Local AI/agent workspace files
+# Local AI/agent workspace files, specs, prompts, and rules
 AGENTS.md
+AGENT.md
+AI.md
+AI_SPEC.md
+AI_SPECS.md
+CLAUDE.md
+CODEX.md
+GEMINI.md
+QWEN.md
 .agents/
 .agent-browser/
+.ai/
+.ai-specs/
+.ai_specs/
 .codex/
 .claude/
 .cursor/
 .continue/
+.kiro/
+.qodo/
 .roo/
+.specstory/
 .windsurf/
 .aider*
+.clinerules
+.cursorrules
+.cursorignore
+.goose/
+.goosehints
+.roorules
+.windsurfrules
+ai-specs/
+ai_specs/
+agent-specs/
+agent_specs/
+prompts.local/
+prompts.local.md
 *.ai.log
+*.prompt.local.md
+*.spec.local.md
 *-agent-harness*.log
 *-codex-adapter*
