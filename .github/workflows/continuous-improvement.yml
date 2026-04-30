@@ -23,9 +23,15 @@ jobs:
       - name: Run continuous improvement report
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/continuous-improvement.sh --strict --output continuous-improvement-report.md
+        run: |
+          set +e
+          ./scripts/continuous-improvement.sh --strict --output continuous-improvement-report.md
+          status=$?
+          cat continuous-improvement-report.md
+          exit "${status}"
 
       - name: Upload continuous improvement report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: continuous-improvement-report
