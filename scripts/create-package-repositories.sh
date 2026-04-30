@@ -45,11 +45,12 @@ EOF
     fi
 
     gpg --batch --armor --export "${fingerprint}" > "${repo_dir}/repo-signing-key.asc"
-    echo "${fingerprint}"
+    REPO_GPG_FINGERPRINT=${fingerprint}
 }
 
 gpg_sign_args=(--batch --yes --local-user)
-fingerprint=$(prepare_signing_key)
+prepare_signing_key
+fingerprint=${REPO_GPG_FINGERPRINT}
 gpg_sign_args+=("${fingerprint}")
 if [ -n "${REPO_GPG_PASSPHRASE:-}" ]; then
     gpg_sign_args=(--batch --yes --pinentry-mode loopback --passphrase "${REPO_GPG_PASSPHRASE}" --local-user "${fingerprint}")
