@@ -12,7 +12,6 @@ KUBE_BUILDER ?= 0
 KUBE_VERSION ?= v1.32.2
 PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
 KUBE_AIRGAP_BUNDLE ?= k8s-$(KUBE_VERSION)-airgap.tar
-PROVE_HOST ?= Fourier
 PREVIOUS_KUBE_VERSION ?=
 
 # Define the etcd version to use
@@ -94,7 +93,6 @@ help:
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
 	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
-	@echo "  PROVE_HOST              SSH host for release proof (default: $(PROVE_HOST))"
 	@echo "  PREVIOUS_KUBE_VERSION   Previous Kubernetes version for upgrade proof"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
@@ -164,7 +162,7 @@ verify-release:
 prove-release:
 	@args=""; \
 	if [ -n "$(PREVIOUS_KUBE_VERSION)" ]; then args="$$args --previous $(PREVIOUS_KUBE_VERSION)"; fi; \
-	./scripts/prove-release.sh "$(KUBE_VERSION)" --host "$(PROVE_HOST)" $$args
+	./scripts/prove-release.sh "$(KUBE_VERSION)" $$args
 
 .PHONY: version
 version:

@@ -9,7 +9,7 @@ Usage:
   k8s-release bundle <version> --airgap [--artifacts DIR] [--repos DIR] [--output FILE]
   k8s-release verify-bundle <bundle.tar> [--repo OWNER/REPO] [--online]
   k8s-release passport <version> [--artifacts DIR] [--repos DIR] [--output FILE]
-  k8s-release prove <version> --host HOST [--previous VERSION]
+  k8s-release prove <version> [--previous VERSION] [--policy FILE]
   k8s-release version
   k8s-release components
 
@@ -19,7 +19,7 @@ Examples:
   k8s-release verify-release v1.32.2
   k8s-release bundle v1.32.2 --airgap
   k8s-release verify-bundle k8s-v1.32.2-airgap.tar
-  k8s-release prove v1.32.2 --host Fourier --previous v1.32.1
+  k8s-release prove v1.32.2 --previous v1.32.1
 EOF
 }
 

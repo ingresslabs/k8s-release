@@ -211,8 +211,8 @@ contains_gate "Version matrix input" "version_matrix" .github/workflows/build.ym
 contains_gate "Fresh cert separation" "cert" scripts/compare-reproducible-artifacts.sh scripts/node-start-smoke-packages.sh
 contains_gate "CLI release verification" "verify-release" k8s-release README.md docs/world-class-release-spec.md scripts/verify-release.sh
 contains_gate "CLI airgap verification" "verify-bundle" k8s-release README.md docs/world-class-release-spec.md scripts/verify-bundle.sh
-contains_gate "CLI release proof" "prove" k8s-release README.md docs/world-class-release-spec.md scripts/prove-release.sh
-contains_gate "Fourier L4 proof" "Fourier" README.md docs/world-class-release-spec.md scripts/prove-release.sh
+contains_gate "CLI release proof" "prove" k8s-release docs/world-class-release-spec.md scripts/prove-release.sh
+contains_gate "Local L4 proof" "local" docs/world-class-release-spec.md scripts/prove-release.sh scripts/l4-release-proof.sh
 contains_gate "Release passport contract" "release passport" README.md docs/world-class-release-spec.md scripts/generate-release-passport.sh
 contains_gate "L4 headline" "Current target: L4" docs/world-class-release-spec.md
 contains_gate "Project starts at 1.0.0" "1\\.0\\.0" VERSION package.json docs/release-policy.md README.md

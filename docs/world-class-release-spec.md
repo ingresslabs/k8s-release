@@ -12,7 +12,7 @@ evidence in the release passport.
 The one-command proof entry point is:
 
 ```bash
-./k8s-release prove v1.32.2 --host Fourier --previous v1.32.1
+./k8s-release prove v1.32.2 --previous v1.32.1
 ```
 
 The proof command must fail if signed-repository install, airgap install,
