@@ -13,7 +13,7 @@ services:
       dockerfile: Dockerfile.certificates
       args:
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment:
       <<: *package-environment
       CERT_VERSION: "${CERT_VERSION:-1.0.0}"
@@ -29,7 +29,7 @@ services:
         KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
         GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/kube-proxy /output/kube-proxy && /usr/local/bin/package-builder.sh kube-proxy \"$${KUBE_VERSION}\" \"Kubernetes Network Proxy\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -44,7 +44,7 @@ services:
         KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
         GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/kubelet /output/kubelet && /usr/local/bin/package-builder.sh kubelet \"$${KUBE_VERSION}\" \"Kubernetes Node Agent\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -58,7 +58,7 @@ services:
         ETCD_VERSION: "${ETCD_VERSION:-v3.5.9}"
         GO_IMAGE: "${ETCD_GO_IMAGE:-golang:1.20-bookworm@sha256:9fa9101141c01e9440216d32eb2b380b3c3079bea07aeab3546020cc91b3662c}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/etcd /output/etcd && cp /usr/local/bin/etcdctl /output/etcdctl && /usr/local/bin/package-builder.sh etcd \"$${ETCD_VERSION}\" \"etcd distributed key-value store\" && /usr/local/bin/package-builder.sh etcdctl \"$${ETCD_VERSION}\" \"etcd command line client\" && ls -la /output/"]
     volumes:
@@ -73,7 +73,7 @@ services:
         KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
         GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/kube-scheduler /output/kube-scheduler && /usr/local/bin/package-builder.sh kube-scheduler \"$${KUBE_VERSION}\" \"Kubernetes Scheduler\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -88,7 +88,7 @@ services:
         KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
         GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/kube-controller-manager /output/kube-controller-manager && /usr/local/bin/package-builder.sh kube-controller-manager \"$${KUBE_VERSION}\" \"Kubernetes Controller Manager\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -103,7 +103,7 @@ services:
         KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
         GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/kube-apiserver /output/kube-apiserver && /usr/local/bin/package-builder.sh kube-apiserver \"$${KUBE_VERSION}\" \"Kubernetes API Server\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -118,7 +118,7 @@ services:
         KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
         GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/kubectl /output/kubectl && /usr/local/bin/package-builder.sh kubectl \"$${KUBE_VERSION}\" \"Kubernetes Command Line Tool\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -133,7 +133,7 @@ services:
         FLANNEL_GIT_URL: "${FLANNEL_GIT_URL:-https://github.com/flannel-io/flannel.git}"
         GO_IMAGE: "${FLANNEL_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/flanneld /output/flanneld && /usr/local/bin/package-builder.sh flanneld \"$${FLANNEL_VERSION}\" \"Flannel Network Fabric for Containers\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
@@ -148,7 +148,7 @@ services:
         CALICO_GIT_URL: "${CALICO_GIT_URL:-https://github.com/projectcalico/calico.git}"
         GO_IMAGE: "${CALICO_GO_IMAGE:-golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
-        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20250201T000000Z}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/calico-node /output/calico-node && cp /usr/local/bin/calico-felix /output/calico-felix && cp /usr/local/bin/calico /output/calico && cp /usr/local/bin/calico-ipam /output/calico-ipam && cp /usr/local/bin/calico-kube-controllers /output/calico-kube-controllers && /usr/local/bin/package-builder.sh calico-node \"$${CALICO_VERSION}\" \"Calico Node Agent\" && /usr/local/bin/package-builder.sh calico-felix \"$${CALICO_VERSION}\" \"Calico Felix Agent\" && /usr/local/bin/package-builder.sh calico \"$${CALICO_VERSION}\" \"Calico CNI Plugin\" && /usr/local/bin/package-builder.sh calico-ipam \"$${CALICO_VERSION}\" \"Calico IPAM Plugin\" && /usr/local/bin/package-builder.sh calico-kube-controllers \"$${CALICO_VERSION}\" \"Calico Kubernetes Controllers\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:

@@ -50,7 +50,7 @@ Packages are written to `output/`.
 |`PACKAGE_TYPE`|`deb`|`deb`, `rpm`, or `all`.|
 |`KUBE_BUILDER`|`0`|Use a Kubernetes Buildx builder named `kube-build-farm`.|
 |`KUBE_BUILDER_ARM64`|`0`|Use a Kubernetes ARM64 Buildx builder named `kube-build-farm-arm64`.|
-|`DEBIAN_SNAPSHOT`|`20250201T000000Z`|Debian snapshot used by `apt-get`.|
+|`DEBIAN_SNAPSHOT`|`20260401T000000Z`|Debian snapshot used by `apt-get`.|
 |`SOURCE_DATE_EPOCH`|latest commit time|Timestamp used to normalize package metadata.|
 
 Build images are digest-pinned and can be overridden with:

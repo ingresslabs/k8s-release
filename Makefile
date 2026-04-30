@@ -34,7 +34,7 @@ ETCD_GO_IMAGE ?= golang:1.20-bookworm@sha256:9fa9101141c01e9440216d32eb2b380b3c3
 FLANNEL_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72
 CALICO_GO_IMAGE ?= golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
 RUNTIME_IMAGE ?= debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
-DEBIAN_SNAPSHOT ?= 20250201T000000Z
+DEBIAN_SNAPSHOT ?= 20260401T000000Z
 
 # Package metadata and reproducibility controls.
 PKG_MAINTAINER ?= Kubernetes Packager <maintainer@example.com>
