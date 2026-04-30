@@ -170,6 +170,7 @@ executable_gate "Airgap bundle verifier" scripts/verify-bundle.sh
 executable_gate "One-command release verifier" scripts/verify-release.sh
 executable_gate "Release proof engine" scripts/prove-release.sh
 executable_gate "L4 release proof runner" scripts/l4-release-proof.sh
+executable_gate "Release proof matrix runner" scripts/prove-release-matrix.sh
 executable_gate "Replayable proof verifier" scripts/verify-proof.sh
 executable_gate "Project version bump script" scripts/bump-project-version.sh
 
@@ -214,9 +215,11 @@ contains_gate "Fresh cert separation" "cert" scripts/compare-reproducible-artifa
 contains_gate "CLI release verification" "verify-release" k8s-release README.md docs/world-class-release-spec.md scripts/verify-release.sh
 contains_gate "CLI airgap verification" "verify-bundle" k8s-release README.md docs/world-class-release-spec.md scripts/verify-bundle.sh
 contains_gate "CLI release proof" "prove" k8s-release docs/world-class-release-spec.md scripts/prove-release.sh
+contains_gate "CLI matrix proof" "prove-matrix" k8s-release Makefile scripts/prove-release-matrix.sh
 contains_gate "CLI proof verification" "verify-proof" k8s-release docs/world-class-release-spec.md scripts/verify-proof.sh
 contains_gate "Local L4 proof" "local" docs/world-class-release-spec.md scripts/prove-release.sh scripts/l4-release-proof.sh
 contains_gate "Policy as code" "release-proof-policy" docs/world-class-release-spec.md docs/release-proof-policy.example.yaml scripts/prove-release.sh
+contains_gate "Proof matrix config" "proof-matrix" docs/release-proof-matrix.example.json scripts/prove-release-matrix.sh
 contains_gate "Upgrade rollback proof" "rollback" docs/world-class-release-spec.md docs/release-proof-policy.example.yaml scripts/l4-release-proof.sh
 contains_gate "Airgap import ceremony" "airgap import" k8s-release docs/world-class-release-spec.md scripts/airgap.sh
 contains_gate "Release passport contract" "release passport" README.md docs/world-class-release-spec.md scripts/generate-release-passport.sh

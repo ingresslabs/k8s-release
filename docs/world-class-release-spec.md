@@ -33,6 +33,12 @@ Airgap import is a local ceremony:
 ./k8s-release airgap import k8s-v1.32.2-airgap.tar --repo /mnt/mirror
 ```
 
+Version and package-type combinations are driven by a proof matrix:
+
+```bash
+./k8s-release prove-matrix --config docs/release-proof-matrix.example.json
+```
+
 ## Release Promise
 
 Every supported Kubernetes version must satisfy these gates before release:

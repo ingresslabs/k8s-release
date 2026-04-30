@@ -13,6 +13,7 @@ KUBE_VERSION ?= v1.32.2
 PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
 KUBE_AIRGAP_BUNDLE ?= k8s-$(KUBE_VERSION)-airgap.tar
 PREVIOUS_KUBE_VERSION ?=
+RELEASE_PROOF_MATRIX ?= docs/release-proof-matrix.example.json
 
 # Define the etcd version to use
 ETCD_VERSION ?= v3.5.9
@@ -75,6 +76,7 @@ help:
 	@echo "  verify-proof            Verify a replayable release proof"
 	@echo "  verify-release          Verify a release artifact set"
 	@echo "  prove-release           Run the one-command release proof engine"
+	@echo "  prove-matrix            Build and prove release combinations from a config file"
 	@echo "  airgap-import           Verify and import an airgap bundle into AIRGAP_REPO"
 	@echo "  version                 Print the project version"
 	@echo "  bump-major              Bump the project major version"
@@ -96,6 +98,7 @@ help:
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
 	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
 	@echo "  PREVIOUS_KUBE_VERSION   Previous Kubernetes version for upgrade proof"
+	@echo "  RELEASE_PROOF_MATRIX    JSON matrix file for prove-matrix"
 	@echo "  AIRGAP_REPO             Local mirror directory for airgap-import"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
@@ -170,6 +173,10 @@ prove-release:
 	@args=""; \
 	if [ -n "$(PREVIOUS_KUBE_VERSION)" ]; then args="$$args --previous $(PREVIOUS_KUBE_VERSION)"; fi; \
 	./scripts/prove-release.sh "$(KUBE_VERSION)" $$args
+
+.PHONY: prove-matrix
+prove-matrix:
+	@./scripts/prove-release-matrix.sh --config "$(RELEASE_PROOF_MATRIX)"
 
 .PHONY: airgap-import
 airgap-import:

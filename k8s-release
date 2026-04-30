@@ -11,6 +11,7 @@ Usage:
   k8s-release verify-proof <release-proof.json>
   k8s-release passport <version> [--artifacts DIR] [--repos DIR] [--output FILE]
   k8s-release prove <version> [--previous VERSION] [--policy FILE]
+  k8s-release prove-matrix --config FILE [--work-dir DIR]
   k8s-release airgap <prepare|verify|import> ...
   k8s-release version
   k8s-release components
@@ -23,6 +24,7 @@ Examples:
   k8s-release verify-bundle k8s-v1.32.2-airgap.tar
   k8s-release verify-proof release-artifacts/release-proof.json
   k8s-release prove v1.32.2 --previous v1.32.1
+  k8s-release prove-matrix --config docs/release-proof-matrix.example.json
   k8s-release airgap import k8s-v1.32.2-airgap.tar --repo /mnt/mirror
 EOF
 }
@@ -74,6 +76,10 @@ case "${command}" in
     prove)
         shift
         exec ./scripts/prove-release.sh "$@"
+        ;;
+    prove-matrix)
+        shift
+        exec ./scripts/prove-release-matrix.sh "$@"
         ;;
     airgap)
         shift
