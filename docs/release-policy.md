@@ -8,6 +8,13 @@ Use semantic versioning for the project itself:
 - Minor: backwards-compatible features, supported version matrix expansion, or new checks.
 - Patch: fixes, documentation, and CI hardening that do not change the public contract.
 
+## Branch Rule
+
+Keep only long-lived `main`, `devel`, and `master` branches when they exist.
+Work may happen on short-lived branches, but tested work must be merged into `main` before the work branch is deleted.
+Keep `devel` aligned with tested work so it remains the integration branch for
+the next change.
+
 For every major project change:
 
 ```bash
