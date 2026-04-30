@@ -159,9 +159,47 @@ jobs:
           path: output/
           retention-days: 7
 
+  node-start-smoke:
+    needs:
+      - build
+      - resolve-version-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version_set: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-packages"
+          path: all-artifacts
+
+      - name: Prepare node smoke artifact set
+        run: |
+          mkdir -p node-smoke-artifacts
+          find all-artifacts -path "*/${{ matrix.version_set.label }}-*-packages/*" -type f \( -name "*.deb" -o -name "*.rpm" \) -exec cp {} node-smoke-artifacts/ \;
+          ls -la node-smoke-artifacts
+
+      - name: Start installed packages in node smoke containers
+        env:
+          NODE_SMOKE_REPORT: node-smoke-artifacts/${{ matrix.version_set.label }}-node-start-smoke.txt
+        run: ./scripts/node-start-smoke-packages.sh node-smoke-artifacts
+
+      - name: Upload node start smoke report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.version_set.label }}-node-start-smoke
+          path: node-smoke-artifacts/*-node-start-smoke.txt
+          retention-days: 7
+
   publish:
     needs:
       - build
+      - node-start-smoke
       - resolve-version-matrix
     runs-on: ubuntu-latest
     permissions:
@@ -184,7 +222,7 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir -p release-artifacts
-          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" -o -name "*-install-smoke.txt" \) | xargs -I{} cp {} release-artifacts/
+          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" -o -name "*-install-smoke.txt" -o -name "*-node-start-smoke.txt" \) | xargs -I{} cp {} release-artifacts/
           find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) -print0 | sort -z | xargs -0 sha256sum > release-artifacts/SHA256SUMS
 
       - name: Create signed package repositories

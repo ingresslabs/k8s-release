@@ -75,6 +75,7 @@ CI performs the release hardening checks that matter for these packages:
 - builds every component
 - rebuilds a deterministic sample twice and compares checksums
 - installs generated packages in clean DEB/RPM containers
+- starts installed packages in GitHub-hosted node smoke containers
 - verifies DEB/RPM metadata
 - writes checksums and release manifests
 - generates SPDX SBOMs
@@ -95,6 +96,7 @@ Verify locally generated packages:
 ```bash
 make verify-packages
 make smoke-install-packages
+make node-start-smoke
 ```
 
 ## GitHub Actions

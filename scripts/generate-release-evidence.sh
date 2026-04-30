@@ -56,6 +56,7 @@ count_files() {
     echo "- Sigstore bundles: $(count_files '*.sigstore.json')"
     echo "- Component manifests: $(count_files '*-release-manifest.json')"
     echo "- Install smoke reports: $(count_files '*-install-smoke.txt')"
+    echo "- Node start smoke reports: $(count_files '*-node-start-smoke.txt')"
     if [ -n "${repo_dir}" ] && [ -f "${repo_dir}/repo-signing-key.asc" ]; then
         echo "- Signed package repository key: package-repositories/repo-signing-key.asc"
     fi

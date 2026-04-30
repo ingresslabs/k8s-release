@@ -63,6 +63,7 @@ help:
 	@echo "  check-pinned-inputs     Verify Dockerfiles use digest-pinned base images"
 	@echo "  verify-packages         Verify packages in the output directory"
 	@echo "  smoke-install-packages  Install generated packages in clean containers"
+	@echo "  node-start-smoke        Start installed packages in a node smoke container"
 	@echo "  create-package-repos    Create signed apt/yum repositories from output"
 	@echo "  release-evidence        Write release evidence for generated output"
 	@echo "  archive                 Create a git archive with branch and commit in the name"
@@ -114,6 +115,10 @@ verify-packages:
 .PHONY: smoke-install-packages
 smoke-install-packages:
 	@./scripts/smoke-install-packages.sh output
+
+.PHONY: node-start-smoke
+node-start-smoke:
+	@./scripts/node-start-smoke-packages.sh output
 
 .PHONY: create-package-repos
 create-package-repos:
