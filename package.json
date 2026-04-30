@@ -1,0 +1,7 @@
+{
+  "name": "k8s-release",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reproducible Kubernetes DEB/RPM release packaging",
+  "license": "GPL-3.0"
+}

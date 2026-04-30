@@ -155,6 +155,8 @@ workflow_files=(.github/workflows/*.yml)
 shell_files=(package-builder.sh generate-certs.sh k8s-release scripts/*.sh)
 
 file_gate "World-class spec" docs/world-class-release-spec.md
+file_gate "Project version" VERSION
+file_gate "Release policy" docs/release-policy.md
 executable_gate "CLI entrypoint" k8s-release
 executable_gate "Install smoke script" scripts/smoke-install-packages.sh
 executable_gate "Node start smoke script" scripts/node-start-smoke-packages.sh
@@ -162,6 +164,7 @@ executable_gate "Reproducibility compare script" scripts/compare-reproducible-ar
 executable_gate "Signed repository script" scripts/create-package-repositories.sh
 executable_gate "Release evidence script" scripts/generate-release-evidence.sh
 executable_gate "One-command release verifier" scripts/verify-release.sh
+executable_gate "Project version bump script" scripts/bump-project-version.sh
 
 run_gate "Pinned Docker inputs" "make check-pinned-inputs"
 run_gate "Shell syntax" "bash -n ${shell_files[*]}"
@@ -199,6 +202,8 @@ contains_gate "Sigstore package signatures" "cosign sign-blob" "${workflow_files
 contains_gate "Version matrix input" "version_matrix" .github/workflows/build.yml .github/workflows/publish-packages.yml
 contains_gate "Fresh cert separation" "cert" scripts/compare-reproducible-artifacts.sh scripts/node-start-smoke-packages.sh
 contains_gate "CLI release verification" "verify-release" k8s-release README.md docs/world-class-release-spec.md scripts/verify-release.sh
+contains_gate "Project starts at 1.0.0" "1\\.0\\.0" VERSION package.json docs/release-policy.md README.md
+contains_gate "Major-change release bumping" "bump-major" Makefile docs/release-policy.md scripts/bump-project-version.sh
 
 if command -v gh >/dev/null 2>&1 && [ -n "${repo}" ] && [ -n "${branch}" ]; then
     latest_run=$(gh run list \
@@ -208,28 +213,48 @@ if command -v gh >/dev/null 2>&1 && [ -n "${repo}" ] && [ -n "${branch}" ]; then
         --limit 1 \
         --json status,conclusion,url,headSha,createdAt \
         --jq '.[0] | [.status, (.conclusion // ""), .url] | @tsv' 2>/dev/null || true)
-    if [ -n "${latest_run}" ]; then
-        IFS=$'\t' read -r run_status run_conclusion run_url <<< "${latest_run}"
-        if [ -z "${run_status}" ]; then
-            add_check WARN "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
-        elif [ "${run_status}" = "completed" ] && [ "${run_conclusion}" = "success" ]; then
-            add_check PASS "Latest GitHub package workflow" "Latest run passed: ${run_url}."
-        elif [ "${run_status}" = "completed" ]; then
-            if [ "${require_green_package_workflow}" -eq 1 ]; then
-                add_check FAIL "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion}\`: ${run_url}."
-                add_note "Fix the latest Build Kubernetes Packages run."
-            else
-                add_check WARN "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion}\`: ${run_url}."
-            fi
-        else
-            add_check WARN "Latest GitHub package workflow" "Latest run is \`${run_status}\`: ${run_url}."
-        fi
-    else
-        add_check WARN "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
-    fi
-else
-    add_check WARN "Latest GitHub package workflow" "Skipped; gh, repo, or branch unavailable."
-fi
+	    if [ -n "${latest_run}" ]; then
+	        IFS=$'\t' read -r run_status run_conclusion run_url <<< "${latest_run}"
+	        if [ -z "${run_status}" ]; then
+	            if [ "${require_green_package_workflow}" -eq 1 ]; then
+	                add_check FAIL "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
+	                add_note "Run Build Kubernetes Packages for ${repo}@${branch}."
+	            else
+	                add_check WARN "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
+	            fi
+	        elif [ "${run_status}" = "completed" ] && [ "${run_conclusion}" = "success" ]; then
+	            add_check PASS "Latest GitHub package workflow" "Latest run passed: ${run_url}."
+	        elif [ "${run_status}" = "completed" ]; then
+	            if [ "${require_green_package_workflow}" -eq 1 ]; then
+	                add_check FAIL "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion:-unknown}\`: ${run_url}."
+	                add_note "Fix the latest Build Kubernetes Packages run."
+	            else
+	                add_check WARN "Latest GitHub package workflow" "Latest run concluded \`${run_conclusion}\`: ${run_url}."
+	            fi
+	        else
+	            if [ "${require_green_package_workflow}" -eq 1 ]; then
+	                add_check FAIL "Latest GitHub package workflow" "Latest run is \`${run_status}\`: ${run_url}."
+	                add_note "Wait for the latest Build Kubernetes Packages run to pass."
+	            else
+	                add_check WARN "Latest GitHub package workflow" "Latest run is \`${run_status}\`: ${run_url}."
+	            fi
+	        fi
+	    else
+	        if [ "${require_green_package_workflow}" -eq 1 ]; then
+	            add_check FAIL "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
+	            add_note "Run Build Kubernetes Packages for ${repo}@${branch}."
+	        else
+	            add_check WARN "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
+	        fi
+	    fi
+	else
+	    if [ "${require_green_package_workflow}" -eq 1 ]; then
+	        add_check FAIL "Latest GitHub package workflow" "Skipped; gh, repo, or branch unavailable."
+	        add_note "Provide gh, --repo, and --branch for the green workflow gate."
+	    else
+	        add_check WARN "Latest GitHub package workflow" "Skipped; gh, repo, or branch unavailable."
+	    fi
+	fi
 
 total=$((pass_count + warn_count + fail_count))
 score=0

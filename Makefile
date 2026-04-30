@@ -10,6 +10,7 @@ KUBE_BUILDER ?= 0
 
 # Define the Kubernetes version to use
 KUBE_VERSION ?= v1.32.2
+PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
 
 # Define the etcd version to use
 ETCD_VERSION ?= v3.5.9
@@ -67,11 +68,13 @@ help:
 	@echo "  create-package-repos    Create signed apt/yum repositories from output"
 	@echo "  release-evidence        Write release evidence for generated output"
 	@echo "  verify-release          Verify a release artifact set"
+	@echo "  version                 Print the project version"
+	@echo "  bump-major              Bump the project major version"
 	@echo "  continuous-improvement  Score release readiness against the project spec"
 	@echo "  archive                 Create a git archive with branch and commit in the name"
 	@echo "  bundle                  Create a git bundle with branch and commit in the name"
 	@echo "  clean                   Clean up generated files"
-	@echo "  release                 Create a Git tag and release on GitHub"
+	@echo "  release                 Create a project Git tag and GitHub release"
 	@echo ""
 	@echo "Variables:"
 	@echo "  FLANNEL_GIT_URL         Flannel Git repository URL (default: https://github.com/flannel-io/flannel.git)"
@@ -83,6 +86,7 @@ help:
 	@echo "  KUBE_BUILDER            Use Kubernetes to build images (default: 0, set to 1 to enable)"
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
+	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
 	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
 	@echo "  COMPOSE_DOCKER_CLI_BUILD Enable Docker CLI build (set to 1)"
@@ -133,6 +137,22 @@ release-evidence:
 .PHONY: verify-release
 verify-release:
 	@./scripts/verify-release.sh $(KUBE_VERSION)
+
+.PHONY: version
+version:
+	@cat VERSION
+
+.PHONY: bump-major
+bump-major:
+	@./scripts/bump-project-version.sh major
+
+.PHONY: bump-minor
+bump-minor:
+	@./scripts/bump-project-version.sh minor
+
+.PHONY: bump-patch
+bump-patch:
+	@./scripts/bump-project-version.sh patch
 
 .PHONY: continuous-improvement
 continuous-improvement:
@@ -324,8 +344,8 @@ build-certificates: switch-builder
 .PHONY: release
 release:
 	@echo "Creating Git tag and releasing on GitHub..."
-	@read -p "Enter the version number (e.g., v1.0.0): " version; \
-	git tag -a $$version -m "Release $$version"; \
-	git push origin $$version; \
-	gh release create $$version --generate-notes
-	@echo "Release $$version created and pushed to GitHub."
+	@release_version="$${RELEASE_VERSION:-project-v$(PROJECT_VERSION)}"; \
+	git tag -a "$$release_version" -m "Project release $(PROJECT_VERSION)"; \
+	git push origin "$$release_version"; \
+	gh release create "$$release_version" --generate-notes; \
+	echo "Release $$release_version created and pushed to GitHub."

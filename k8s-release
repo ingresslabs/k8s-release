@@ -6,6 +6,7 @@ usage() {
 Usage:
   k8s-release build <version> --component <name> --format <deb|rpm|deb,rpm>
   k8s-release verify-release <version> [--repo OWNER/REPO] [--dir DIR]
+  k8s-release version
   k8s-release components
 
 Examples:
@@ -42,6 +43,10 @@ case "${command}" in
     verify-release)
         shift
         exec ./scripts/verify-release.sh "$@"
+        ;;
+    version)
+        cat VERSION
+        exit 0
         ;;
     build)
         shift

@@ -172,4 +172,18 @@ cython_debug/
 
 output/
 continuous-improvement-report.md
+
+# Local AI/agent workspace files
+AGENTS.md
+.agents/
+.agent-browser/
+.codex/
+.claude/
+.cursor/
+.continue/
+.roo/
+.windsurf/
 .aider*
+*.ai.log
+*-agent-harness*.log
+*-codex-adapter*

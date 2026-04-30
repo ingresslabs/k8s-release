@@ -10,4 +10,4 @@ make build PACKAGE_TYPE=all
 
 CI proves pinned inputs, reproducibility, clean installs, node smoke starts, SBOMs, provenance, Sigstore signatures, signed repo metadata, and release evidence. Cert packages are intentionally non-deterministic.
 
-Spec: `docs/world-class-release-spec.md`; License: GPL-3.0
+Version: `1.0.0`; Spec: `docs/world-class-release-spec.md`; Release policy: `docs/release-policy.md`; License: GPL-3.0
