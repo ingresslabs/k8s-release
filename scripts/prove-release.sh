@@ -122,6 +122,17 @@ need_tool() {
     command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
 
+same_directory() {
+    local first=$1
+    local second=$2
+    local first_real second_real
+
+    [ -d "${first}" ] && [ -d "${second}" ] || return 1
+    first_real=$(cd "${first}" && pwd -P)
+    second_real=$(cd "${second}" && pwd -P)
+    [ "${first_real}" = "${second_real}" ]
+}
+
 dir_has_packages() {
     local dir=$1
     [ -d "${dir}" ] || return 1
@@ -513,7 +524,9 @@ log "Creating proof-enforced airgap bundle"
 ./scripts/verify-bundle.sh "${work_artifact_dir}/$(basename "${bundle}")"
 
 mkdir -p "${artifact_dir}"
-cp -a "${work_artifact_dir}/." "${artifact_dir}/"
+if ! same_directory "${work_artifact_dir}" "${artifact_dir}"; then
+    cp -a "${work_artifact_dir}/." "${artifact_dir}/"
+fi
 
 echo "Release proof completed locally for ${tag}."
 echo "Evidence directory: ${artifact_dir}"
