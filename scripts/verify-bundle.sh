@@ -130,6 +130,19 @@ if command -v jq >/dev/null 2>&1; then
         fail "invalid bundle manifest"
     jq -e '.schema_version == "k8s-release.verification-policy.v1" and .required.bundle_checksums == true' "${metadata_dir}/verification-policy.json" >/dev/null ||
         fail "invalid verification policy"
+    if jq -e '.required.l4_cluster_smoke == true' "${metadata_dir}/verification-policy.json" >/dev/null; then
+        require_l4=1
+    else
+        require_l4=0
+    fi
+    if jq -e '.required.upgrade_smoke == true' "${metadata_dir}/verification-policy.json" >/dev/null; then
+        require_upgrade=1
+    else
+        require_upgrade=0
+    fi
+else
+    require_l4=0
+    require_upgrade=0
 fi
 
 log "Verifying bundle checksums"
@@ -170,6 +183,16 @@ manifests=("${artifact_dir}"/*-release-manifest.json "${artifact_dir}"/release-m
 [ "${#packages[@]}" -gt 0 ] || fail "no DEB/RPM packages found"
 [ "${#sboms[@]}" -gt 0 ] || fail "no SPDX SBOM files found"
 
+if [ "${require_l4}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f -name '*-l4-smoke.txt' | grep -q .; then
+    fail "verification policy requires L4 cluster smoke evidence"
+fi
+if [ "${require_l4}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f -name '*-release-proof.json' | grep -q .; then
+    fail "verification policy requires machine-readable release proof evidence"
+fi
+if [ "${require_upgrade}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f -name '*-upgrade-smoke.txt' | grep -q .; then
+    fail "verification policy requires upgrade smoke evidence"
+fi
+
 if command -v jq >/dev/null 2>&1; then
     log "Verifying release manifests and SPDX SBOM shape"
     manifest_count=0
@@ -191,6 +214,12 @@ if command -v jq >/dev/null 2>&1; then
     for sbom in "${sboms[@]}"; do
         jq -e '.spdxVersion and .SPDXID and (.packages | type == "array")' "${sbom}" >/dev/null ||
             fail "invalid SPDX SBOM: ${sbom}"
+    done
+
+    for proof in "${artifact_dir}"/*-release-proof.json; do
+        [ -f "${proof}" ] || continue
+        jq -e '.schema_version == "k8s-release.release-proof.v1" and .status == "passed" and (.gates | type == "array")' "${proof}" >/dev/null ||
+            fail "invalid release proof JSON: ${proof}"
     done
     pass "release manifests and SPDX SBOMs parse"
 else

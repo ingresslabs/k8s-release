@@ -101,6 +101,7 @@ has_rpm=0
 
 l4_reports=$(list_files "${artifact_dir}" '*-l4-smoke.txt' || true)
 upgrade_reports=$(list_files "${artifact_dir}" '*-upgrade-smoke.txt' || true)
+proof_reports=$(list_files "${artifact_dir}" '*-release-proof.json' || true)
 node_reports=$(list_files "${artifact_dir}" '*-node-start-smoke.txt' || true)
 install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
 
@@ -127,7 +128,8 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
         echo "sudo install -m 0644 package-repositories/repo-signing-key.asc /usr/share/keyrings/k8s-release.asc"
         echo "printf 'deb [signed-by=/usr/share/keyrings/k8s-release.asc] file:%s stable main\\n' \"\$(pwd)/package-repositories/debian\" | sudo tee /etc/apt/sources.list.d/k8s-release.list"
         echo "sudo apt-get update"
-        echo "sudo apt-get install -y kubelet kube-proxy kubectl kube-apiserver kube-controller-manager kube-scheduler etcd flannel calico"
+        echo "packages=\$(find release-artifacts -maxdepth 1 -name '*.deb' -exec dpkg-deb --field {} Package \\; | sort -u | tr '\\n' ' ')"
+        echo "sudo apt-get install -y \${packages}"
         echo '```'
         echo
     fi
@@ -144,7 +146,8 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
         echo "repo_gpgcheck=1"
         echo "gpgkey=file://\$(pwd)/package-repositories/repo-signing-key.asc"
         echo "REPO"
-        echo "sudo dnf install -y kubelet kube-proxy kubectl kube-apiserver kube-controller-manager kube-scheduler etcd flannel calico"
+        echo "packages=\$(find release-artifacts -maxdepth 1 -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\\n' {} \\; | sort -u | tr '\\n' ' ')"
+        echo "sudo dnf install -y \${packages}"
         echo '```'
         echo
     fi
@@ -153,6 +156,9 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
     echo '```bash'
     echo "./k8s-release bundle ${tag} --airgap"
     echo "./k8s-release verify-bundle k8s-${tag}-airgap.tar"
+    echo "tar -xf k8s-${tag}-airgap.tar"
+    echo "cd k8s-${tag}-airgap"
+    echo "sudo ./install/install-packages.sh"
     echo '```'
     echo
     echo "## Verification Inventory"
@@ -167,6 +173,7 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
     echo "|Node start smoke reports|$(count_files "${artifact_dir}" '*-node-start-smoke.txt')|"
     echo "|L4 cluster smoke reports|$(count_files "${artifact_dir}" '*-l4-smoke.txt')|"
     echo "|Upgrade smoke reports|$(count_files "${artifact_dir}" '*-upgrade-smoke.txt')|"
+    echo "|Release proof JSON|$(count_files "${artifact_dir}" '*-release-proof.json')|"
     echo
     echo "## Package Checksums"
     echo
@@ -188,6 +195,9 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
     done
     for file in $(list_files "${artifact_dir}" '*-release-manifest.json'); do
         echo "- Release manifest: ${file}"
+    done
+    for file in $(list_files "${artifact_dir}" '*-release-proof.json'); do
+        echo "- Release proof: ${file}"
     done
     echo "- GitHub provenance: verified with \`./k8s-release verify-release ${tag}\` when online."
     echo

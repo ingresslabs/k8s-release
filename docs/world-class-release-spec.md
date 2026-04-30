@@ -9,6 +9,16 @@ real VM or kind-backed cluster installs from the signed repository, upgrades fro
 the previous supported version when one exists, and records conformance smoke
 evidence in the release passport.
 
+The one-command proof entry point is:
+
+```bash
+./k8s-release prove v1.32.2 --host Fourier --previous v1.32.1
+```
+
+The proof command must fail if signed-repository install, airgap install,
+cluster smoke, upgrade smoke, machine-readable proof JSON, or release passport
+generation fails.
+
 ## Release Promise
 
 Every supported Kubernetes version must satisfy these gates before release:

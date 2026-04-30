@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  scripts/create-airgap-bundle.sh <version> [--airgap] [--artifacts DIR] [--repos DIR] [--output FILE] [--policy FILE]
+  scripts/create-airgap-bundle.sh <version> [--airgap] [--artifacts DIR] [--repos DIR] [--output FILE] [--policy FILE] [--require-l4] [--require-upgrade]
 
 Creates a self-contained offline bundle containing release artifacts, signed
 package repositories, install helpers, a verification policy, and bundle-level
@@ -33,6 +33,8 @@ shift
 artifact_dir=release-artifacts
 repo_dir=package-repositories
 policy_file=
+require_l4=0
+require_upgrade=0
 tag=${version}
 case "${tag}" in
     v*) ;;
@@ -60,6 +62,14 @@ while [ "$#" -gt 0 ]; do
         --policy)
             policy_file=${2:?--policy requires a file}
             shift 2
+            ;;
+        --require-l4)
+            require_l4=1
+            shift
+            ;;
+        --require-upgrade)
+            require_upgrade=1
+            shift
             ;;
         -h|--help)
             usage
@@ -115,6 +125,23 @@ count_files() {
     find "${dir}" -maxdepth 1 -type f -name "${pattern}" | wc -l | tr -d ' '
 }
 
+json_bool() {
+    if [ "$1" -eq 1 ]; then
+        printf 'true'
+    else
+        printf 'false'
+    fi
+}
+
+if [ "${require_l4}" -eq 1 ] && [ "$(count_files "${artifact_dir}" '*-l4-smoke.txt')" -eq 0 ]; then
+    echo "ERROR: --require-l4 was set but no *-l4-smoke.txt report exists in ${artifact_dir}" >&2
+    exit 1
+fi
+if [ "${require_upgrade}" -eq 1 ] && [ "$(count_files "${artifact_dir}" '*-upgrade-smoke.txt')" -eq 0 ]; then
+    echo "ERROR: --require-upgrade was set but no *-upgrade-smoke.txt report exists in ${artifact_dir}" >&2
+    exit 1
+fi
+
 tmp_dir=$(mktemp -d)
 cleanup() {
     rm -rf "${tmp_dir}"
@@ -145,8 +172,8 @@ else
     "signed_package_repositories": true,
     "release_evidence": true,
     "release_passport": true,
-    "l4_cluster_smoke": true,
-    "upgrade_smoke": true
+    "l4_cluster_smoke": $(json_bool "${require_l4}"),
+    "upgrade_smoke": $(json_bool "${require_upgrade}")
   },
   "offline_verification": {
     "default_command": "./k8s-release verify-bundle ${bundle_name}.tar",
@@ -172,14 +199,14 @@ Use the local apt repository on Debian or Ubuntu:
 
 \`\`\`bash
 sudo ./install/setup-apt-repo.sh
-sudo apt-get install -y kubelet kube-proxy kubectl kube-apiserver kube-controller-manager kube-scheduler etcd flannel calico
+sudo ./install/install-packages.sh
 \`\`\`
 
 Use the local yum repository on RPM-based systems:
 
 \`\`\`bash
 sudo ./install/setup-yum-repo.sh
-sudo dnf install -y kubelet kube-proxy kubectl kube-apiserver kube-controller-manager kube-scheduler etcd flannel calico
+sudo ./install/install-packages.sh
 \`\`\`
 EOF
 
@@ -243,7 +270,14 @@ set -euo pipefail
 
 packages=("$@")
 if [ "${#packages[@]}" -eq 0 ]; then
-    packages=(kubelet kube-proxy kubectl kube-apiserver kube-controller-manager kube-scheduler etcd flannel calico)
+    bundle_dir=$(cd "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+    artifact_dir="${bundle_dir}/release-artifacts"
+    if command -v apt-get >/dev/null 2>&1; then
+        mapfile -t packages < <(find "${artifact_dir}" -maxdepth 1 -type f -name '*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
+    elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+        mapfile -t packages < <(find "${artifact_dir}" -maxdepth 1 -type f -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
+    fi
+    [ "${#packages[@]}" -gt 0 ] || { echo "ERROR: could not infer packages from ${artifact_dir}" >&2; exit 1; }
 fi
 
 if command -v apt-get >/dev/null 2>&1; then
@@ -251,10 +285,10 @@ if command -v apt-get >/dev/null 2>&1; then
     apt-get install -y "${packages[@]}"
 elif command -v dnf >/dev/null 2>&1; then
     "$(dirname -- "${BASH_SOURCE[0]}")/setup-yum-repo.sh"
-    dnf install -y "${packages[@]}"
+    dnf install -y --disablerepo='*' --enablerepo=k8s-release-airgap "${packages[@]}"
 elif command -v yum >/dev/null 2>&1; then
     "$(dirname -- "${BASH_SOURCE[0]}")/setup-yum-repo.sh"
-    yum install -y "${packages[@]}"
+    yum install -y --disablerepo='*' --enablerepo=k8s-release-airgap "${packages[@]}"
 else
     echo "ERROR: apt-get, dnf, or yum is required." >&2
     exit 1
@@ -288,7 +322,8 @@ cat > "${bundle_root}/metadata/bundle-manifest.json" <<EOF
     "install_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-install-smoke.txt'),
     "node_start_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-node-start-smoke.txt'),
     "l4_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-l4-smoke.txt'),
-    "upgrade_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-upgrade-smoke.txt')
+    "upgrade_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-upgrade-smoke.txt'),
+    "release_proofs": $(count_files "${bundle_root}/release-artifacts" '*-release-proof.json')
   },
   "verification": {
     "offline_command": "./k8s-release verify-bundle $(basename "${output_file}")",
