@@ -297,7 +297,9 @@ EOF
     # Build the RPM package
     rpmbuild \
       --define "_topdir ${RPM_BUILD_DIR}" \
+      --define "_buildhost k8s-release" \
       --define "source_date_epoch ${SOURCE_DATE_EPOCH}" \
+      --define "use_source_date_epoch_as_buildtime 1" \
       --define "clamp_mtime_to_source_date_epoch 1" \
       -bb ${RPM_BUILD_DIR}/SPECS/${pkg}.spec
     

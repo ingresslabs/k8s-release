@@ -30,6 +30,20 @@ run_in_container() {
         bash -euo pipefail -c "${script}"
 }
 
+all_are_cert_packages() {
+    local pkg
+    for pkg in "$@"; do
+        case "$(basename "$pkg")" in
+            *certs*.deb|*certs*.rpm)
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    done
+    return 0
+}
+
 common_checks='
 smoke_binary() {
     bin=$1
@@ -89,25 +103,53 @@ run_smoke() {
     echo "Install smoke test started at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     if [ "${#debs[@]}" -gt 0 ]; then
-        echo "Testing DEB install path in ubuntu:24.04"
-        run_in_container ubuntu:24.04 "
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y ca-certificates coreutils findutils grep systemd
-            apt-get install -y /packages/*.deb
-            dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
-            ${common_checks}
-        "
+        if all_are_cert_packages "${debs[@]}"; then
+            for deb in "${debs[@]}"; do
+                deb_name=$(basename "${deb}")
+                echo "Testing DEB install path for ${deb_name} in ubuntu:24.04"
+                run_in_container ubuntu:24.04 "
+                    export DEBIAN_FRONTEND=noninteractive
+                    apt-get update
+                    apt-get install -y ca-certificates coreutils findutils grep systemd
+                    apt-get install -y /packages/${deb_name}
+                    dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                    ${common_checks}
+                "
+            done
+        else
+            echo "Testing DEB install path in ubuntu:24.04"
+            run_in_container ubuntu:24.04 "
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update
+                apt-get install -y ca-certificates coreutils findutils grep systemd
+                apt-get install -y /packages/*.deb
+                dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                ${common_checks}
+            "
+        fi
     fi
 
     if [ "${#rpms[@]}" -gt 0 ]; then
-        echo "Testing RPM install path in rockylinux:9"
-        run_in_container rockylinux:9 "
-            dnf install -y coreutils findutils grep systemd
-            dnf install -y /packages/*.rpm
-            rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
-            ${common_checks}
-        "
+        if all_are_cert_packages "${rpms[@]}"; then
+            for rpm in "${rpms[@]}"; do
+                rpm_name=$(basename "${rpm}")
+                echo "Testing RPM install path for ${rpm_name} in rockylinux:9"
+                run_in_container rockylinux:9 "
+                    dnf install -y findutils grep systemd
+                    dnf install -y /packages/${rpm_name}
+                    rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                    ${common_checks}
+                "
+            done
+        else
+            echo "Testing RPM install path in rockylinux:9"
+            run_in_container rockylinux:9 "
+                dnf install -y findutils grep systemd
+                dnf install -y /packages/*.rpm
+                rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                ${common_checks}
+            "
+        fi
     fi
 
     echo "Install smoke test passed for ${artifact_dir}."
