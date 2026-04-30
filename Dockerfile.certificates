@@ -4,6 +4,8 @@ ARG DEBIAN_SNAPSHOT=20260401T000000Z
 
 FROM ${RUNTIME_IMAGE}
 ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN set -eux; \
     . /etc/os-release; \
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \

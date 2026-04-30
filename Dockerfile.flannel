@@ -6,6 +6,8 @@ ARG DEBIAN_SNAPSHOT=20260401T000000Z
 # Stage 1: Builder stage
 FROM ${GO_IMAGE} AS builder
 ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN set -eux; \
     . /etc/os-release; \
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
@@ -23,6 +25,7 @@ ENV FLANNEL_VERSION=${FLANNEL_VERSION}
 ENV FLANNEL_GIT_URL=${FLANNEL_GIT_URL}
 
 ENV GO111MODULE=on
+ENV GOFLAGS="-trimpath -buildvcs=false"
 ENV GOPATH=/go
 ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 
@@ -49,6 +52,8 @@ RUN ls -l /flannel/dist/
 # Stage 2: Runtime stage
 FROM ${RUNTIME_IMAGE}
 ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN set -eux; \
     . /etc/os-release; \
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \

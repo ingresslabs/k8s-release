@@ -5,6 +5,8 @@ ARG DEBIAN_SNAPSHOT=20260401T000000Z
 
 FROM ${GO_IMAGE} AS builder
 ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN set -eux; \
     . /etc/os-release; \
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
@@ -20,6 +22,7 @@ ARG ETCD_VERSION
 ENV ETCD_VERSION=${ETCD_VERSION}
 
 ENV GO111MODULE=on
+ENV GOFLAGS="-trimpath -buildvcs=false"
 ENV GOPATH=/go
 ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 
@@ -42,6 +45,8 @@ RUN ls -l /etcd/bin/
 
 FROM ${RUNTIME_IMAGE}
 ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN set -eux; \
     . /etc/os-release; \
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \

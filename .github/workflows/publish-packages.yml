@@ -28,6 +28,10 @@ on:
           - deb
           - rpm
           - all
+      version_matrix:
+        description: 'Optional JSON array of version sets'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -45,11 +49,36 @@ jobs:
       - name: Verify pinned Docker inputs
         run: make check-pinned-inputs
 
+  resolve-version-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve version matrix
+        id: resolve
+        env:
+          VERSION_MATRIX: ${{ github.event.inputs.version_matrix }}
+          KUBE_VERSION: ${{ github.event.inputs.kube_version || 'v1.32.2' }}
+          ETCD_VERSION: ${{ github.event.inputs.etcd_version || 'v3.5.9' }}
+          FLANNEL_VERSION: ${{ github.event.inputs.flannel_version || 'v0.26.4' }}
+          CALICO_VERSION: ${{ github.event.inputs.calico_version || 'v3.28.0' }}
+        run: |
+          matrix=$(./scripts/resolve-version-matrix.sh)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "${matrix}" | jq .
+
   build:
-    needs: validate-inputs
+    needs:
+      - validate-inputs
+      - resolve-version-matrix
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
+        version_set: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix) }}
         component:
           - kube-proxy
           - kubelet
@@ -76,10 +105,10 @@ jobs:
 
       - name: Build ${{ matrix.component }}
         run: |
-          KUBE_VERSION=${{ github.event.inputs.kube_version || 'v1.32.2' }} \
-          ETCD_VERSION=${{ github.event.inputs.etcd_version || 'v3.5.9' }} \
-          FLANNEL_VERSION=${{ github.event.inputs.flannel_version || 'v0.26.4' }} \
-          CALICO_VERSION=${{ github.event.inputs.calico_version || 'v3.28.0' }} \
+          KUBE_VERSION=${{ matrix.version_set.kube_version }} \
+          ETCD_VERSION=${{ matrix.version_set.etcd_version }} \
+          FLANNEL_VERSION=${{ matrix.version_set.flannel_version }} \
+          CALICO_VERSION=${{ matrix.version_set.calico_version }} \
           PACKAGE_TYPE=${{ github.event.inputs.package_type || 'deb' }} \
           DOCKER_COMPOSE="docker compose" \
           make build-${{ matrix.component }}
@@ -87,15 +116,20 @@ jobs:
       - name: Verify generated packages
         run: ./scripts/verify-packages.sh output
 
+      - name: Install smoke test generated packages
+        env:
+          SMOKE_REPORT: output/${{ matrix.version_set.label }}-${{ matrix.component }}-install-smoke.txt
+        run: ./scripts/smoke-install-packages.sh output
+
       - name: Generate checksums and manifest
-        run: ./scripts/generate-release-metadata.sh output "${{ matrix.component }}"
+        run: ./scripts/generate-release-metadata.sh output "${{ matrix.version_set.label }}-${{ matrix.component }}"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
           path: output
           format: spdx-json
-          output-file: output/${{ matrix.component }}.spdx.json
+          output-file: output/${{ matrix.version_set.label }}-${{ matrix.component }}.spdx.json
           upload-artifact: false
 
       - name: Prepare attestation subjects
@@ -121,17 +155,27 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.component }}-packages
+          name: ${{ matrix.version_set.label }}-${{ matrix.component }}-packages
           path: output/
           retention-days: 7
 
   publish:
-    needs: build
+    needs:
+      - build
+      - resolve-version-matrix
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install repository tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils createrepo-c dpkg-dev gnupg
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -140,8 +184,24 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir -p release-artifacts
-          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" \) | xargs -I{} cp {} release-artifacts/
+          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" -o -name "*-install-smoke.txt" \) | xargs -I{} cp {} release-artifacts/
           find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) -print0 | sort -z | xargs -0 sha256sum > release-artifacts/SHA256SUMS
+
+      - name: Create signed package repositories
+        env:
+          REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+        run: ./scripts/create-package-repositories.sh release-artifacts package-repositories
+
+      - name: Generate release evidence
+        env:
+          KUBE_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].kube_version }}
+          ETCD_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].etcd_version }}
+          FLANNEL_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].flannel_version }}
+          CALICO_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].calico_version }}
+        run: |
+          ./scripts/generate-release-evidence.sh release-artifacts package-repositories release-artifacts/release-evidence.md
+          cp package-repositories/repo-signing-key.asc release-artifacts/
 
       - name: Upload combined artifacts
         uses: actions/upload-artifact@v4
@@ -149,36 +209,13 @@ jobs:
           name: kubernetes-packages
           path: release-artifacts/
           retention-days: 7
-          
-      - name: Set up package repositories
-        run: |
-          mkdir -p debian/main rpm
-          
-          # Copy DEB packages to debian repo structure
-          cp release-artifacts/*.deb debian/main/ || true
-          
-          # Copy RPM packages to rpm repo structure
-          cp release-artifacts/*.rpm rpm/ || true
-          
-      - name: Create Debian repository
-        if: ${{ github.event.inputs.package_type == 'deb' || github.event.inputs.package_type == 'all' || github.event.inputs.package_type == null }}
-        run: |
-          cd debian
-          sudo apt-get update
-          sudo apt-get install -y dpkg-dev
-          dpkg-scanpackages main /dev/null > main/Packages
-          test -s main/Packages
-          cat main/Packages
-          gzip -k main/Packages
-          
-      - name: Create RPM repository
-        if: ${{ github.event.inputs.package_type == 'rpm' || github.event.inputs.package_type == 'all' }}
-        run: |
-          cd rpm
-          sudo apt-get update
-          sudo apt-get install -y createrepo-c
-          createrepo .
-          test -f repodata/repomd.xml
+
+      - name: Upload package repositories as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-repositories
+          path: package-repositories/
+          retention-days: 30
           
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -192,24 +229,15 @@ jobs:
           
       - name: Publish package repository bundle to GHCR
         run: |
-          mkdir -p package-repositories
-          cp -r debian/ rpm/ package-repositories/
           (
             cd package-repositories
             find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           )
           tar -czf kubernetes-package-repositories.tar.gz -C package-repositories .
-          version="${{ github.event.inputs.kube_version || 'v1.32.2' }}"
+          version="${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].kube_version }}"
           version="${version#v}"
           repo=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
           oras push "ghcr.io/${repo}/kubernetes-packages:${version}" \
             --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             kubernetes-package-repositories.tar.gz:application/vnd.kubekattle.k8s-release.repositories.v1.tar+gzip \
             package-repositories/SHA256SUMS:text/plain
-          
-      - name: Upload package repositories as artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-repositories
-          path: package-repositories/
-          retention-days: 30

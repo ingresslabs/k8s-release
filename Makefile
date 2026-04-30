@@ -62,6 +62,9 @@ help:
 	@echo "  build-calico            Build only calico"
 	@echo "  check-pinned-inputs     Verify Dockerfiles use digest-pinned base images"
 	@echo "  verify-packages         Verify packages in the output directory"
+	@echo "  smoke-install-packages  Install generated packages in clean containers"
+	@echo "  create-package-repos    Create signed apt/yum repositories from output"
+	@echo "  release-evidence        Write release evidence for generated output"
 	@echo "  archive                 Create a git archive with branch and commit in the name"
 	@echo "  bundle                  Create a git bundle with branch and commit in the name"
 	@echo "  clean                   Clean up generated files"
@@ -107,6 +110,18 @@ check-pinned-inputs:
 .PHONY: verify-packages
 verify-packages:
 	@./scripts/verify-packages.sh output
+
+.PHONY: smoke-install-packages
+smoke-install-packages:
+	@./scripts/smoke-install-packages.sh output
+
+.PHONY: create-package-repos
+create-package-repos:
+	@./scripts/create-package-repositories.sh output package-repositories
+
+.PHONY: release-evidence
+release-evidence:
+	@./scripts/generate-release-evidence.sh output package-repositories release-evidence.md
 
 # Define BUILD_INFO to calculate and display build duration
 define BUILD_INFO

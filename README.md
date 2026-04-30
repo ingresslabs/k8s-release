@@ -37,6 +37,12 @@ make build-etcd
 make build-calico PACKAGE_TYPE=rpm
 ```
 
+Or use the small CLI:
+
+```bash
+./k8s-release build v1.32.2 --component kubelet --format deb,rpm
+```
+
 Packages are written to `output/`.
 
 ## Key Variables
@@ -67,12 +73,15 @@ CI performs the release hardening checks that matter for these packages:
 
 - verifies Docker build inputs are digest-pinned
 - builds every component
+- rebuilds a deterministic sample twice and compares checksums
+- installs generated packages in clean DEB/RPM containers
 - verifies DEB/RPM metadata
 - writes checksums and release manifests
 - generates SPDX SBOMs
 - creates GitHub artifact attestations
 - signs packages with keyless Sigstore bundles
-- publishes release assets and an OCI repository bundle to GHCR
+- creates signed apt/yum repository metadata
+- publishes release assets, evidence, and an OCI repository bundle to GHCR
 - certificate packages contain fresh key material, so their contents are intentionally unique per build
 
 Run the local static check:
@@ -85,6 +94,7 @@ Verify locally generated packages:
 
 ```bash
 make verify-packages
+make smoke-install-packages
 ```
 
 ## GitHub Actions
@@ -92,6 +102,8 @@ make verify-packages
 - `Build Kubernetes Packages`: normal CI and manual builds.
 - `Create Release`: runs on `v*` tags and uploads packages, checksums, SBOMs, and signatures to GitHub Releases.
 - `Publish Packages`: manual package publishing with selectable component versions and package type.
+
+Manual builds also accept `version_matrix`, a JSON array of Kubernetes/etcd/Flannel/Calico version sets.
 
 ## GHCR Bundle
 

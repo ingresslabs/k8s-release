@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  k8s-release build <version> --component <name> --format <deb|rpm|deb,rpm>
+  k8s-release components
+
+Examples:
+  k8s-release build v1.32.2 --component kubelet --format deb,rpm
+  k8s-release build v3.5.9 --component etcd --format rpm
+EOF
+}
+
+components() {
+    cat <<'EOF'
+kube-proxy
+kubelet
+etcd
+kube-scheduler
+kube-controller-manager
+kube-apiserver
+kubectl
+flannel
+calico
+certificates
+EOF
+}
+
+command=${1:-}
+case "${command}" in
+    components)
+        components
+        exit 0
+        ;;
+    build)
+        shift
+        ;;
+    -h|--help|help|"")
+        usage
+        exit 0
+        ;;
+    *)
+        echo "ERROR: unknown command '${command}'."
+        usage
+        exit 1
+        ;;
+esac
+
+version=${1:-}
+if [ -z "${version}" ]; then
+    echo "ERROR: build version is required."
+    usage
+    exit 1
+fi
+shift
+
+component=
+format=deb
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --component)
+            component=${2:-}
+            shift 2
+            ;;
+        --format)
+            format=${2:-}
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "ERROR: unknown argument '$1'."
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ -z "${component}" ]; then
+    echo "ERROR: --component is required."
+    exit 1
+fi
+
+case "${format}" in
+    deb|rpm|all)
+        package_type=${format}
+        ;;
+    deb,rpm|rpm,deb)
+        package_type=all
+        ;;
+    *)
+        echo "ERROR: unsupported --format '${format}'. Use deb, rpm, or deb,rpm."
+        exit 1
+        ;;
+esac
+
+case "${component}" in
+    kube-proxy|kubelet|kube-scheduler|kube-controller-manager|kube-apiserver|kubectl)
+        exec make "build-${component}" KUBE_VERSION="${version}" PACKAGE_TYPE="${package_type}"
+        ;;
+    etcd)
+        exec make build-etcd ETCD_VERSION="${version}" PACKAGE_TYPE="${package_type}"
+        ;;
+    flannel)
+        exec make build-flannel FLANNEL_VERSION="${version}" PACKAGE_TYPE="${package_type}"
+        ;;
+    calico)
+        exec make build-calico CALICO_VERSION="${version}" PACKAGE_TYPE="${package_type}"
+        ;;
+    certificates)
+        exec make build-certificates CERT_VERSION="${version#v}" PACKAGE_TYPE="${package_type}"
+        ;;
+    *)
+        echo "ERROR: unsupported component '${component}'."
+        components
+        exit 1
+        ;;
+esac

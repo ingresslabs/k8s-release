@@ -65,6 +65,11 @@ jobs:
       - name: Verify generated packages
         run: ./scripts/verify-packages.sh output
 
+      - name: Install smoke test generated packages
+        env:
+          SMOKE_REPORT: output/${{ matrix.component }}-${{ matrix.package_type }}-install-smoke.txt
+        run: ./scripts/smoke-install-packages.sh output
+
       - name: Generate checksums and manifest
         run: ./scripts/generate-release-metadata.sh output "${{ matrix.component }}-${{ matrix.package_type }}"
 
@@ -110,6 +115,14 @@ jobs:
       contents: write
       packages: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install repository tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils createrepo-c dpkg-dev gnupg
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -122,9 +135,22 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir -p release-artifacts
-          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" \) | xargs -I{} cp {} release-artifacts/
+          find all-artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.spdx.json" -o -name "*.sigstore.json" -o -name "*-SHA256SUMS" -o -name "*-release-manifest.json" -o -name "*-install-smoke.txt" \) | xargs -I{} cp {} release-artifacts/
           find release-artifacts -type f \( -name "*.deb" -o -name "*.rpm" \) -print0 | sort -z | xargs -0 sha256sum > release-artifacts/SHA256SUMS
           ls -la release-artifacts/
+
+      - name: Create signed package repositories
+        env:
+          REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+        run: ./scripts/create-package-repositories.sh release-artifacts package-repositories
+
+      - name: Generate release evidence
+        env:
+          KUBE_VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          ./scripts/generate-release-evidence.sh release-artifacts package-repositories release-artifacts/release-evidence.md
+          cp package-repositories/repo-signing-key.asc release-artifacts/
 
       - name: Create Release
         id: create_release
@@ -134,34 +160,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-          
-      - name: Set up package repositories
-        run: |
-          mkdir -p debian/main rpm
-          
-          # Copy DEB packages to debian repo structure
-          cp release-artifacts/*.deb debian/main/ || true
-          
-          # Copy RPM packages to rpm repo structure
-          cp release-artifacts/*.rpm rpm/ || true
-          
-      - name: Create Debian repository
-        run: |
-          cd debian
-          sudo apt-get update
-          sudo apt-get install -y dpkg-dev
-          dpkg-scanpackages main /dev/null > main/Packages
-          test -s main/Packages
-          cat main/Packages
-          gzip -k main/Packages
-          
-      - name: Create RPM repository
-        run: |
-          cd rpm
-          sudo apt-get update
-          sudo apt-get install -y createrepo-c
-          createrepo .
-          test -f repodata/repomd.xml
           
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -175,8 +173,6 @@ jobs:
           
       - name: Publish package repository bundle to GHCR
         run: |
-          mkdir -p package-repositories
-          cp -r debian/ rpm/ package-repositories/
           (
             cd package-repositories
             find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
