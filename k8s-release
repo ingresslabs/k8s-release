@@ -5,11 +5,13 @@ usage() {
     cat <<'EOF'
 Usage:
   k8s-release build <version> --component <name> --format <deb|rpm|deb,rpm>
+  k8s-release verify-release <version> [--repo OWNER/REPO] [--dir DIR]
   k8s-release components
 
 Examples:
   k8s-release build v1.32.2 --component kubelet --format deb,rpm
   k8s-release build v3.5.9 --component etcd --format rpm
+  k8s-release verify-release v1.32.2
 EOF
 }
 
@@ -28,11 +30,18 @@ certificates
 EOF
 }
 
+repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cd "${repo_root}"
+
 command=${1:-}
 case "${command}" in
     components)
         components
         exit 0
+        ;;
+    verify-release)
+        shift
+        exec ./scripts/verify-release.sh "$@"
         ;;
     build)
         shift

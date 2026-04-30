@@ -66,6 +66,7 @@ help:
 	@echo "  node-start-smoke        Start installed packages in a node smoke container"
 	@echo "  create-package-repos    Create signed apt/yum repositories from output"
 	@echo "  release-evidence        Write release evidence for generated output"
+	@echo "  verify-release          Verify a release artifact set"
 	@echo "  continuous-improvement  Score release readiness against the project spec"
 	@echo "  archive                 Create a git archive with branch and commit in the name"
 	@echo "  bundle                  Create a git bundle with branch and commit in the name"
@@ -128,6 +129,10 @@ create-package-repos:
 .PHONY: release-evidence
 release-evidence:
 	@./scripts/generate-release-evidence.sh output package-repositories release-evidence.md
+
+.PHONY: verify-release
+verify-release:
+	@./scripts/verify-release.sh $(KUBE_VERSION)
 
 .PHONY: continuous-improvement
 continuous-improvement:

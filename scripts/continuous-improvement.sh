@@ -161,6 +161,7 @@ executable_gate "Node start smoke script" scripts/node-start-smoke-packages.sh
 executable_gate "Reproducibility compare script" scripts/compare-reproducible-artifacts.sh
 executable_gate "Signed repository script" scripts/create-package-repositories.sh
 executable_gate "Release evidence script" scripts/generate-release-evidence.sh
+executable_gate "One-command release verifier" scripts/verify-release.sh
 
 run_gate "Pinned Docker inputs" "make check-pinned-inputs"
 run_gate "Shell syntax" "bash -n ${shell_files[*]}"
@@ -197,6 +198,7 @@ contains_gate "Build provenance attestation" "attest-build-provenance" "${workfl
 contains_gate "Sigstore package signatures" "cosign sign-blob" "${workflow_files[@]}"
 contains_gate "Version matrix input" "version_matrix" .github/workflows/build.yml .github/workflows/publish-packages.yml
 contains_gate "Fresh cert separation" "cert" scripts/compare-reproducible-artifacts.sh scripts/node-start-smoke-packages.sh
+contains_gate "CLI release verification" "verify-release" k8s-release README.md docs/world-class-release-spec.md scripts/verify-release.sh
 
 if command -v gh >/dev/null 2>&1 && [ -n "${repo}" ] && [ -n "${branch}" ]; then
     latest_run=$(gh run list \

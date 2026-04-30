@@ -150,6 +150,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      attestations: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -187,6 +188,14 @@ jobs:
         run: |
           ./scripts/generate-release-evidence.sh release-artifacts package-repositories release-artifacts/release-evidence.md
           cp package-repositories/repo-signing-key.asc release-artifacts/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/verify-release.sh "${{ steps.get_version.outputs.VERSION }}" --repo "${GITHUB_REPOSITORY}" --dir release-artifacts
 
       - name: Create Release
         id: create_release
