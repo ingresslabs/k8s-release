@@ -94,8 +94,6 @@ install_packages() {
             dnf install -y \
                 ca-certificates \
                 conntrack-tools \
-                coreutils \
-                curl \
                 findutils \
                 grep \
                 iproute \
