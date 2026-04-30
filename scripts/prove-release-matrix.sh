@@ -223,14 +223,26 @@ assemble_set() {
     local artifact_dir=$7
     local repo_dir=$8
     local bundle=$9
+    local package_pattern
 
     [ -d output ] || fail "output directory not found after build"
-    find output -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' \) | grep -q . ||
-        fail "no packages were built for ${label}"
+    case "${package_type}" in
+        deb)
+            package_pattern='*.deb'
+            ;;
+        rpm)
+            package_pattern='*.rpm'
+            ;;
+        *)
+            fail "unsupported package_type for ${label}: ${package_type}"
+            ;;
+    esac
+    find output -maxdepth 1 -type f -name "${package_pattern}" | grep -q . ||
+        fail "no ${package_type} packages were built for ${label}"
 
     rm -rf "${artifact_dir}" "${repo_dir}" "${bundle}"
     mkdir -p "${artifact_dir}"
-    find output -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' \) -exec cp {} "${artifact_dir}/" \;
+    find output -maxdepth 1 -type f -name "${package_pattern}" -exec cp {} "${artifact_dir}/" \;
     (
         cd "${artifact_dir}"
         find . -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' \) -print0 |
