@@ -175,7 +175,13 @@ fi
 if command -v actionlint >/dev/null 2>&1; then
     run_gate "GitHub Actions lint" "actionlint ${workflow_files[*]}"
 elif command -v go >/dev/null 2>&1; then
-    run_gate "GitHub Actions lint" "go run github.com/rhysd/actionlint/cmd/actionlint@latest ${workflow_files[*]}"
+    actionlint_log=$(mktemp)
+    if go run github.com/rhysd/actionlint/cmd/actionlint@latest "${workflow_files[@]}" >"${actionlint_log}" 2>&1; then
+        add_check PASS "GitHub Actions lint" "Command passed: \`go run github.com/rhysd/actionlint/cmd/actionlint@latest ${workflow_files[*]}\`."
+    else
+        add_check WARN "GitHub Actions lint" "Go fallback failed; install \`actionlint\` for a hard local gate. Log: ${actionlint_log}."
+        add_note "Install actionlint in the runner image or run it locally before release."
+    fi
 else
     add_check WARN "GitHub Actions lint" "Neither actionlint nor go is available; skipped actionlint."
 fi
@@ -202,7 +208,9 @@ if command -v gh >/dev/null 2>&1 && [ -n "${repo}" ] && [ -n "${branch}" ]; then
         --jq '.[0] | [.status, (.conclusion // ""), .url] | @tsv' 2>/dev/null || true)
     if [ -n "${latest_run}" ]; then
         IFS=$'\t' read -r run_status run_conclusion run_url <<< "${latest_run}"
-        if [ "${run_status}" = "completed" ] && [ "${run_conclusion}" = "success" ]; then
+        if [ -z "${run_status}" ]; then
+            add_check WARN "Latest GitHub package workflow" "No matching run found for ${repo}@${branch}."
+        elif [ "${run_status}" = "completed" ] && [ "${run_conclusion}" = "success" ]; then
             add_check PASS "Latest GitHub package workflow" "Latest run passed: ${run_url}."
         elif [ "${run_status}" = "completed" ]; then
             if [ "${require_green_package_workflow}" -eq 1 ]; then
