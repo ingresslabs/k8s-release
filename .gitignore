@@ -171,4 +171,5 @@ cython_debug/
 .pypirc
 
 output/
+continuous-improvement-report.md
 .aider*

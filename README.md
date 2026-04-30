@@ -97,7 +97,10 @@ Verify locally generated packages:
 make verify-packages
 make smoke-install-packages
 make node-start-smoke
+make continuous-improvement
 ```
+
+The continuous improvement spec lives in `docs/world-class-release-spec.md`.
 
 ## GitHub Actions
 

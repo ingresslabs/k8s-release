@@ -1,0 +1,33 @@
+name: Continuous Improvement
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  release-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run continuous improvement report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/continuous-improvement.sh --strict --output continuous-improvement-report.md
+
+      - name: Upload continuous improvement report
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuous-improvement-report
+          path: continuous-improvement-report.md
+          retention-days: 30

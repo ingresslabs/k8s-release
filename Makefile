@@ -66,6 +66,7 @@ help:
 	@echo "  node-start-smoke        Start installed packages in a node smoke container"
 	@echo "  create-package-repos    Create signed apt/yum repositories from output"
 	@echo "  release-evidence        Write release evidence for generated output"
+	@echo "  continuous-improvement  Score release readiness against the project spec"
 	@echo "  archive                 Create a git archive with branch and commit in the name"
 	@echo "  bundle                  Create a git bundle with branch and commit in the name"
 	@echo "  clean                   Clean up generated files"
@@ -127,6 +128,10 @@ create-package-repos:
 .PHONY: release-evidence
 release-evidence:
 	@./scripts/generate-release-evidence.sh output package-repositories release-evidence.md
+
+.PHONY: continuous-improvement
+continuous-improvement:
+	@./scripts/continuous-improvement.sh --output continuous-improvement-report.md
 
 # Define BUILD_INFO to calculate and display build duration
 define BUILD_INFO
