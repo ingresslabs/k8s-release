@@ -72,8 +72,10 @@ help:
 	@echo "  release-passport        Write a release passport for generated output"
 	@echo "  airgap-bundle           Create an offline bundle with artifacts, repos, install helpers, and policy"
 	@echo "  verify-bundle           Verify an offline bundle"
+	@echo "  verify-proof            Verify a replayable release proof"
 	@echo "  verify-release          Verify a release artifact set"
 	@echo "  prove-release           Run the one-command release proof engine"
+	@echo "  airgap-import           Verify and import an airgap bundle into AIRGAP_REPO"
 	@echo "  version                 Print the project version"
 	@echo "  bump-major              Bump the project major version"
 	@echo "  continuous-improvement  Score release readiness against the project spec"
@@ -94,6 +96,7 @@ help:
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
 	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
 	@echo "  PREVIOUS_KUBE_VERSION   Previous Kubernetes version for upgrade proof"
+	@echo "  AIRGAP_REPO             Local mirror directory for airgap-import"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
 	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
@@ -154,6 +157,10 @@ airgap-bundle:
 verify-bundle:
 	@./scripts/verify-bundle.sh $(KUBE_AIRGAP_BUNDLE)
 
+.PHONY: verify-proof
+verify-proof:
+	@./scripts/verify-proof.sh release-artifacts/release-proof.json
+
 .PHONY: verify-release
 verify-release:
 	@./scripts/verify-release.sh $(KUBE_VERSION)
@@ -163,6 +170,11 @@ prove-release:
 	@args=""; \
 	if [ -n "$(PREVIOUS_KUBE_VERSION)" ]; then args="$$args --previous $(PREVIOUS_KUBE_VERSION)"; fi; \
 	./scripts/prove-release.sh "$(KUBE_VERSION)" $$args
+
+.PHONY: airgap-import
+airgap-import:
+	@[ -n "$(AIRGAP_REPO)" ] || { echo "ERROR: AIRGAP_REPO is required."; exit 2; }
+	@./scripts/airgap.sh import "$(KUBE_AIRGAP_BUNDLE)" --repo "$(AIRGAP_REPO)"
 
 .PHONY: version
 version:

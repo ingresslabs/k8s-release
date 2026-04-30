@@ -12,12 +12,26 @@ evidence in the release passport.
 The one-command proof entry point is:
 
 ```bash
-./k8s-release prove v1.32.2 --previous v1.32.1
+./k8s-release prove v1.32.2 --previous v1.32.1 --policy docs/release-proof-policy.example.yaml
 ```
 
 The proof command must fail if signed-repository install, airgap install,
-cluster smoke, upgrade smoke, machine-readable proof JSON, or release passport
-generation fails.
+cluster smoke, upgrade and rollback smoke, machine-readable proof JSON,
+replayable proof signatures, or release passport generation fails.
+
+Replayable audit verification is:
+
+```bash
+./k8s-release verify-proof release-artifacts/release-proof.json
+```
+
+Airgap import is a local ceremony:
+
+```bash
+./k8s-release airgap prepare v1.32.2 --require-l4 --require-upgrade
+./k8s-release airgap verify k8s-v1.32.2-airgap.tar
+./k8s-release airgap import k8s-v1.32.2-airgap.tar --repo /mnt/mirror
+```
 
 ## Release Promise
 

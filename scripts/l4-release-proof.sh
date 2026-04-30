@@ -151,6 +151,9 @@ utc_now() {
 safe_host=$(safe_name "${host_label}")
 proof_json="${output_dir}/${tag}-${safe_host}-release-proof.json"
 l4_report="${output_dir}/${tag}-${safe_host}-l4-smoke.txt"
+airgap_verify_report="${output_dir}/${tag}-${safe_host}-airgap-verify.txt"
+signed_repo_report="${output_dir}/${tag}-${safe_host}-signed-repo-install.txt"
+airgap_install_report="${output_dir}/${tag}-${safe_host}-airgap-install.txt"
 upgrade_report="${output_dir}/${tag}-${safe_host}-upgrade-smoke.txt"
 
 generated_at=$(utc_now)
@@ -442,7 +445,7 @@ cluster_conformance_smoke() {
     ./scripts/node-start-smoke-packages.sh "${artifact_dir}"
 }
 
-l4_smoke_gate() {
+airgap_bundle_gate() {
     need_tool docker
     need_tool tar
     need_tool sha256sum
@@ -450,10 +453,6 @@ l4_smoke_gate() {
 
     echo "Verifying airgap bundle offline"
     ./scripts/verify-bundle.sh "${bundle}"
-
-    signed_repo_install_smoke
-    airgap_install_smoke
-    cluster_conformance_smoke
 }
 
 run_deb_upgrade_smoke() {
@@ -464,8 +463,9 @@ run_deb_upgrade_smoke() {
         -v "${artifact_dir}:/current-artifacts:ro" \
         -v "${repo_dir}:/current-repo:ro" \
         ubuntu:24.04 \
-        bash -euo pipefail -s "${tag#v}" <<INNER
-current_version=\$1
+        bash -euo pipefail -s "${previous_tag#v}" "${tag#v}" <<INNER
+previous_version=\$1
+current_version=\$2
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates coreutils findutils gnupg grep systemd
@@ -495,6 +495,22 @@ if printf '%s\n' "\${current_packages[@]}" | grep -qx kubelet; then
     esac
 fi
 ${smoke_installed_payloads}
+
+echo "Rolling back to previous apt repository"
+gpg --dearmor < /previous-repo/repo-signing-key.asc > /usr/share/keyrings/k8s-release.gpg.previous
+mv /usr/share/keyrings/k8s-release.gpg.previous /usr/share/keyrings/k8s-release.gpg
+printf 'deb [signed-by=/usr/share/keyrings/k8s-release.gpg] file:/previous-repo/debian stable main\n' > /etc/apt/sources.list.d/k8s-release.list
+apt-get update
+apt-get install -y --allow-downgrades "\${previous_packages[@]}"
+dpkg-query -W -f='rollback \${Package} \${Version} \${Architecture}\n' "\${previous_packages[@]}" | sort
+if printf '%s\n' "\${previous_packages[@]}" | grep -qx kubelet; then
+    installed=\$(dpkg-query -W -f='\${Version}' kubelet)
+    case "\${installed}" in
+        "\${previous_version}"*) ;;
+        *) echo "ERROR: kubelet rolled back to \${installed}, expected \${previous_version}" >&2; exit 1 ;;
+    esac
+fi
+${smoke_installed_payloads}
 INNER
 }
 
@@ -506,8 +522,9 @@ run_rpm_upgrade_smoke() {
         -v "${artifact_dir}:/current-artifacts:ro" \
         -v "${repo_dir}:/current-repo:ro" \
         rockylinux:9 \
-        bash -euo pipefail -s "${tag#v}" <<INNER
-current_version=\$1
+        bash -euo pipefail -s "${previous_tag#v}" "${tag#v}" <<INNER
+previous_version=\$1
+current_version=\$2
 dnf install -y findutils grep systemd
 mkdir -p /etc/yum.repos.d
 cat > /etc/yum.repos.d/k8s-release.repo <<'REPO'
@@ -548,6 +565,29 @@ if printf '%s\n' "\${current_packages[@]}" | grep -qx kubelet; then
     esac
 fi
 ${smoke_installed_payloads}
+
+echo "Rolling back to previous yum repository"
+cat > /etc/yum.repos.d/k8s-release.repo <<'REPO'
+[k8s-release]
+name=Kubernetes release proof packages
+baseurl=file:///previous-repo/rpm
+enabled=1
+gpgcheck=0
+repo_gpgcheck=1
+gpgkey=file:///previous-repo/repo-signing-key.asc
+REPO
+dnf clean all
+dnf makecache --disablerepo='*' --enablerepo=k8s-release
+dnf downgrade -y --allowerasing --disablerepo='*' --enablerepo=k8s-release "\${previous_packages[@]}"
+rpm -q "\${previous_packages[@]}" | sed 's/^/rollback /' | sort
+if printf '%s\n' "\${previous_packages[@]}" | grep -qx kubelet; then
+    installed=\$(rpm -q --queryformat '%{VERSION}' kubelet)
+    case "\${installed}" in
+        "\${previous_version}"*) ;;
+        *) echo "ERROR: kubelet rolled back to \${installed}, expected \${previous_version}" >&2; exit 1 ;;
+    esac
+fi
+${smoke_installed_payloads}
 INNER
 }
 
@@ -576,10 +616,13 @@ upgrade_smoke_gate() {
 }
 
 write_json running ""
-run_gate l4_cluster_smoke "${l4_report}" l4_smoke_gate
+run_gate airgap_bundle_verify "${airgap_verify_report}" airgap_bundle_gate
+run_gate signed_repo_install "${signed_repo_report}" signed_repo_install_smoke
+run_gate airgap_install "${airgap_install_report}" airgap_install_smoke
+run_gate cluster_smoke "${l4_report}" cluster_conformance_smoke
 
 if [ -n "${previous_tag}" ]; then
-    run_gate upgrade_smoke "${upgrade_report}" upgrade_smoke_gate
+    run_gate upgrade_rollback_smoke "${upgrade_report}" upgrade_smoke_gate
 fi
 
 write_json passed "$(utc_now)"

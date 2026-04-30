@@ -1,0 +1,11 @@
+required:
+  signed_repos: true
+  airgap_bundle: true
+  upgrade_from_previous: true
+  rollback: true
+  sbom: true
+  provenance: true
+  max_cve_severity: high
+  os_matrix:
+    - ubuntu:24.04
+    - rockylinux:9

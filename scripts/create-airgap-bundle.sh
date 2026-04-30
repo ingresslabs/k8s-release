@@ -323,7 +323,7 @@ cat > "${bundle_root}/metadata/bundle-manifest.json" <<EOF
     "node_start_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-node-start-smoke.txt'),
     "l4_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-l4-smoke.txt'),
     "upgrade_smoke_reports": $(count_files "${bundle_root}/release-artifacts" '*-upgrade-smoke.txt'),
-    "release_proofs": $(count_files "${bundle_root}/release-artifacts" '*-release-proof.json')
+    "release_proofs": $(($(count_files "${bundle_root}/release-artifacts" '*-release-proof.json') + $(count_files "${bundle_root}/release-artifacts" 'release-proof.json')))
   },
   "verification": {
     "offline_command": "./k8s-release verify-bundle $(basename "${output_file}")",

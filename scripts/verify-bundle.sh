@@ -186,7 +186,7 @@ manifests=("${artifact_dir}"/*-release-manifest.json "${artifact_dir}"/release-m
 if [ "${require_l4}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f -name '*-l4-smoke.txt' | grep -q .; then
     fail "verification policy requires L4 cluster smoke evidence"
 fi
-if [ "${require_l4}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f -name '*-release-proof.json' | grep -q .; then
+if [ "${require_l4}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f \( -name '*-release-proof.json' -o -name 'release-proof.json' \) | grep -q .; then
     fail "verification policy requires machine-readable release proof evidence"
 fi
 if [ "${require_upgrade}" -eq 1 ] && ! find "${artifact_dir}" -maxdepth 1 -type f -name '*-upgrade-smoke.txt' | grep -q .; then
@@ -216,9 +216,9 @@ if command -v jq >/dev/null 2>&1; then
             fail "invalid SPDX SBOM: ${sbom}"
     done
 
-    for proof in "${artifact_dir}"/*-release-proof.json; do
+    for proof in "${artifact_dir}"/*-release-proof.json "${artifact_dir}"/release-proof.json; do
         [ -f "${proof}" ] || continue
-        jq -e '.schema_version == "k8s-release.release-proof.v1" and .status == "passed" and (.gates | type == "array")' "${proof}" >/dev/null ||
+        jq -e '(.schema_version == "k8s-release.release-proof.v1" or .schema_version == "k8s-release.proof.v1") and .status == "passed" and (.gates | type == "array")' "${proof}" >/dev/null ||
             fail "invalid release proof JSON: ${proof}"
     done
     pass "release manifests and SPDX SBOMs parse"

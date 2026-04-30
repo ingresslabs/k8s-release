@@ -101,7 +101,12 @@ has_rpm=0
 
 l4_reports=$(list_files "${artifact_dir}" '*-l4-smoke.txt' || true)
 upgrade_reports=$(list_files "${artifact_dir}" '*-upgrade-smoke.txt' || true)
-proof_reports=$(list_files "${artifact_dir}" '*-release-proof.json' || true)
+proof_reports=$(
+    {
+        list_files "${artifact_dir}" '*-release-proof.json' || true
+        list_files "${artifact_dir}" 'release-proof.json' || true
+    } | sort -u
+)
 node_reports=$(list_files "${artifact_dir}" '*-node-start-smoke.txt' || true)
 install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
 
@@ -173,7 +178,7 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
     echo "|Node start smoke reports|$(count_files "${artifact_dir}" '*-node-start-smoke.txt')|"
     echo "|L4 cluster smoke reports|$(count_files "${artifact_dir}" '*-l4-smoke.txt')|"
     echo "|Upgrade smoke reports|$(count_files "${artifact_dir}" '*-upgrade-smoke.txt')|"
-    echo "|Release proof JSON|$(count_files "${artifact_dir}" '*-release-proof.json')|"
+    echo "|Release proof JSON|$(($(count_files "${artifact_dir}" '*-release-proof.json') + $(count_files "${artifact_dir}" 'release-proof.json')))|"
     echo
     echo "## Package Checksums"
     echo
@@ -199,6 +204,12 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
     for file in $(list_files "${artifact_dir}" '*-release-proof.json'); do
         echo "- Release proof: ${file}"
     done
+    if [ -f "${artifact_dir}/release-proof.json" ]; then
+        echo "- Release proof: release-proof.json"
+    fi
+    if [ -f "${artifact_dir}/release-evidence.tar" ]; then
+        echo "- Release evidence archive: release-evidence.tar"
+    fi
     echo "- GitHub provenance: verified with \`./k8s-release verify-release ${tag}\` when online."
     echo
     echo "## Supported OS Matrix"
