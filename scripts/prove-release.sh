@@ -218,7 +218,9 @@ policy_value() {
             pattern="^[[:space:]]*" key "[[:space:]]*:"
             if (line ~ pattern) {
                 sub("^[^:]*:", "", line)
-                gsub(/[ \"'\''\t]/, "", line)
+                gsub(/[[:space:]]/, "", line)
+                gsub(/"/, "", line)
+                gsub(/\047/, "", line)
                 print tolower(line)
                 exit
             }
