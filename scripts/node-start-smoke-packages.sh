@@ -33,6 +33,7 @@ package_format=${1:?package format is required}
 workdir=/tmp/k8s-node-smoke
 pki_dir="${workdir}/pki"
 mkdir -p "${workdir}" "${pki_dir}" /etc/kubernetes/pki /var/lib/kubelet
+node_ip=127.0.0.1
 
 log() {
     printf '\n[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"
@@ -113,6 +114,17 @@ install_packages() {
     esac
 }
 
+detect_node_ip() {
+    node_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") {print $(i + 1); exit}}' || true)
+    if [ -z "${node_ip}" ]; then
+        node_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+    if [ -z "${node_ip}" ]; then
+        node_ip=127.0.0.1
+    fi
+    log "Using node IP ${node_ip}"
+}
+
 b64() {
     if base64 --help 2>&1 | grep -q -- '-w'; then
         base64 -w0 "$1"
@@ -128,7 +140,7 @@ generate_pki() {
         -subj "/CN=k8s-release-smoke-ca" \
         -out "${pki_dir}/ca.crt"
 
-    cat > "${pki_dir}/apiserver.conf" <<'EOF'
+    cat > "${pki_dir}/apiserver.conf" <<EOF
 [req]
 default_bits = 2048
 prompt = no
@@ -151,6 +163,7 @@ DNS.2 = kubernetes.default
 DNS.3 = kubernetes.default.svc
 IP.1 = 127.0.0.1
 IP.2 = 10.96.0.1
+IP.3 = ${node_ip}
 EOF
 
     openssl genrsa -out "${pki_dir}/apiserver.key" 2048
@@ -300,7 +313,7 @@ start_etcd() {
 start_apiserver() {
     start_process kube-apiserver \
         kube-apiserver \
-        --advertise-address=127.0.0.1 \
+        --advertise-address="${node_ip}" \
         --allow-privileged=true \
         --authorization-mode=Node,RBAC \
         --bind-address=127.0.0.1 \
@@ -364,10 +377,13 @@ EOF
     cat > "${workdir}/kube-proxy-config.yaml" <<EOF
 kind: KubeProxyConfiguration
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
-bindAddress: 0.0.0.0
+bindAddress: ${node_ip}
 clientConnection:
   kubeconfig: ${workdir}/admin.kubeconfig
 clusterCIDR: 10.244.0.0/16
+conntrack:
+  maxPerCore: 0
+  min: 0
 healthzBindAddress: 127.0.0.1:10256
 hostnameOverride: smoke-node
 metricsBindAddress: 127.0.0.1:10249
@@ -425,6 +441,7 @@ verify_installed_binaries() {
 }
 
 install_packages
+detect_node_ip
 verify_installed_binaries
 generate_pki
 write_kubeconfigs
