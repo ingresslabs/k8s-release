@@ -53,7 +53,10 @@ smoke_binary() {
         kubectl)
             timeout 20s "$bin" version --client=true >/dev/null 2>&1 || timeout 20s "$bin" --help >/dev/null
             ;;
-        etcd|etcdctl|kube-apiserver|kube-controller-manager|kube-proxy|kube-scheduler|kubelet|flanneld|calico-node|calico-felix|calico-kube-controllers)
+        calico-node)
+            timeout 20s "$bin" -v >/dev/null
+            ;;
+        etcd|etcdctl|kube-apiserver|kube-controller-manager|kube-proxy|kube-scheduler|kubelet|flanneld|calico-felix|calico-kube-controllers)
             timeout 20s "$bin" --version >/dev/null 2>&1 || timeout 20s "$bin" --help >/dev/null
             ;;
         calico|calico-ipam)
