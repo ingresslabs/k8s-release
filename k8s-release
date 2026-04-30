@@ -6,6 +6,9 @@ usage() {
 Usage:
   k8s-release build <version> --component <name> --format <deb|rpm|deb,rpm>
   k8s-release verify-release <version> [--repo OWNER/REPO] [--dir DIR]
+  k8s-release bundle <version> --airgap [--artifacts DIR] [--repos DIR] [--output FILE]
+  k8s-release verify-bundle <bundle.tar> [--repo OWNER/REPO] [--online]
+  k8s-release passport <version> [--artifacts DIR] [--repos DIR] [--output FILE]
   k8s-release version
   k8s-release components
 
@@ -13,6 +16,8 @@ Examples:
   k8s-release build v1.32.2 --component kubelet --format deb,rpm
   k8s-release build v3.5.9 --component etcd --format rpm
   k8s-release verify-release v1.32.2
+  k8s-release bundle v1.32.2 --airgap
+  k8s-release verify-bundle k8s-v1.32.2-airgap.tar
 EOF
 }
 
@@ -43,6 +48,18 @@ case "${command}" in
     verify-release)
         shift
         exec ./scripts/verify-release.sh "$@"
+        ;;
+    bundle)
+        shift
+        exec ./scripts/create-airgap-bundle.sh "$@"
+        ;;
+    verify-bundle)
+        shift
+        exec ./scripts/verify-bundle.sh "$@"
+        ;;
+    passport)
+        shift
+        exec ./scripts/generate-release-passport.sh "$@"
         ;;
     version)
         cat VERSION

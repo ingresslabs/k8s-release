@@ -109,7 +109,7 @@ fi
 
 (
     cd "${repo_dir}"
-    find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+    find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
 )
 
 echo "Signed package repositories written to ${repo_dir}."

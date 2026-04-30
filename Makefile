@@ -11,6 +11,7 @@ KUBE_BUILDER ?= 0
 # Define the Kubernetes version to use
 KUBE_VERSION ?= v1.32.2
 PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
+KUBE_AIRGAP_BUNDLE ?= k8s-$(KUBE_VERSION)-airgap.tar
 
 # Define the etcd version to use
 ETCD_VERSION ?= v3.5.9
@@ -67,6 +68,9 @@ help:
 	@echo "  node-start-smoke        Start installed packages in a node smoke container"
 	@echo "  create-package-repos    Create signed apt/yum repositories from output"
 	@echo "  release-evidence        Write release evidence for generated output"
+	@echo "  release-passport        Write a release passport for generated output"
+	@echo "  airgap-bundle           Create an offline bundle with artifacts, repos, install helpers, and policy"
+	@echo "  verify-bundle           Verify an offline bundle"
 	@echo "  verify-release          Verify a release artifact set"
 	@echo "  version                 Print the project version"
 	@echo "  bump-major              Bump the project major version"
@@ -86,6 +90,7 @@ help:
 	@echo "  KUBE_BUILDER            Use Kubernetes to build images (default: 0, set to 1 to enable)"
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
+	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
 	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
@@ -133,6 +138,18 @@ create-package-repos:
 .PHONY: release-evidence
 release-evidence:
 	@./scripts/generate-release-evidence.sh output package-repositories release-evidence.md
+
+.PHONY: release-passport
+release-passport:
+	@./scripts/generate-release-passport.sh $(KUBE_VERSION) --artifacts release-artifacts --repos package-repositories --output release-artifacts/release-passport.md
+
+.PHONY: airgap-bundle
+airgap-bundle:
+	@./scripts/create-airgap-bundle.sh $(KUBE_VERSION) --airgap --artifacts release-artifacts --repos package-repositories --output $(KUBE_AIRGAP_BUNDLE)
+
+.PHONY: verify-bundle
+verify-bundle:
+	@./scripts/verify-bundle.sh $(KUBE_AIRGAP_BUNDLE)
 
 .PHONY: verify-release
 verify-release:

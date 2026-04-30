@@ -163,6 +163,9 @@ executable_gate "Node start smoke script" scripts/node-start-smoke-packages.sh
 executable_gate "Reproducibility compare script" scripts/compare-reproducible-artifacts.sh
 executable_gate "Signed repository script" scripts/create-package-repositories.sh
 executable_gate "Release evidence script" scripts/generate-release-evidence.sh
+executable_gate "Release passport script" scripts/generate-release-passport.sh
+executable_gate "Airgap bundle script" scripts/create-airgap-bundle.sh
+executable_gate "Airgap bundle verifier" scripts/verify-bundle.sh
 executable_gate "One-command release verifier" scripts/verify-release.sh
 executable_gate "Project version bump script" scripts/bump-project-version.sh
 
@@ -196,12 +199,18 @@ contains_gate "Package install smoke" "smoke-install-packages.sh" "${workflow_fi
 contains_gate "Node start smoke" "node-start-smoke" "${workflow_files[@]}"
 contains_gate "Signed apt/yum repositories" "create-package-repositories.sh" "${workflow_files[@]}"
 contains_gate "Release evidence generation" "generate-release-evidence.sh" "${workflow_files[@]}"
+contains_gate "Release passport generation" "generate-release-passport.sh" "${workflow_files[@]}"
+contains_gate "Airgap bundle generation" "create-airgap-bundle.sh" "${workflow_files[@]}"
+contains_gate "Airgap bundle verification" "verify-bundle.sh" "${workflow_files[@]}"
 contains_gate "SBOM generation" "anchore/sbom-action" "${workflow_files[@]}"
 contains_gate "Build provenance attestation" "attest-build-provenance" "${workflow_files[@]}"
 contains_gate "Sigstore package signatures" "cosign sign-blob" "${workflow_files[@]}"
 contains_gate "Version matrix input" "version_matrix" .github/workflows/build.yml .github/workflows/publish-packages.yml
 contains_gate "Fresh cert separation" "cert" scripts/compare-reproducible-artifacts.sh scripts/node-start-smoke-packages.sh
 contains_gate "CLI release verification" "verify-release" k8s-release README.md docs/world-class-release-spec.md scripts/verify-release.sh
+contains_gate "CLI airgap verification" "verify-bundle" k8s-release README.md docs/world-class-release-spec.md scripts/verify-bundle.sh
+contains_gate "Release passport contract" "release passport" README.md docs/world-class-release-spec.md scripts/generate-release-passport.sh
+contains_gate "L4 headline" "Current target: L4" docs/world-class-release-spec.md
 contains_gate "Project starts at 1.0.0" "1\\.0\\.0" VERSION package.json docs/release-policy.md README.md
 contains_gate "Major-change release bumping" "bump-major" Makefile docs/release-policy.md scripts/bump-project-version.sh
 contains_gate "Merge tested work before branch cleanup" "tested work must be merged into.*main" docs/release-policy.md
