@@ -53,6 +53,9 @@ smoke_binary() {
         kubectl)
             timeout 20s "$bin" version --client=true >/dev/null 2>&1 || timeout 20s "$bin" --help >/dev/null
             ;;
+        istioctl)
+            timeout 20s "$bin" version --remote=false >/dev/null 2>&1 || timeout 20s "$bin" version >/dev/null 2>&1 || timeout 20s "$bin" --help >/dev/null
+            ;;
         calico-node)
             timeout 20s "$bin" -v >/dev/null
             ;;
@@ -115,7 +118,7 @@ run_smoke() {
                     apt-get update
                     apt-get install -y ca-certificates coreutils findutils grep systemd
                     apt-get install -y /packages/${deb_name}
-                    dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                    dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|istio|kubernetes-)' || true
                     ${common_checks}
                 "
             done
@@ -126,7 +129,7 @@ run_smoke() {
                 apt-get update
                 apt-get install -y ca-certificates coreutils findutils grep systemd
                 apt-get install -y /packages/*.deb
-                dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                dpkg-query -W -f='\${Package} \${Version} \${Architecture}\n' | grep -E '^(kube|etcd|flannel|calico|istio|kubernetes-)' || true
                 ${common_checks}
             "
         fi
@@ -140,7 +143,7 @@ run_smoke() {
                 run_in_container rockylinux:9 "
                     dnf install -y --allowerasing findutils grep systemd
                     dnf install -y --allowerasing /packages/${rpm_name}
-                    rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                    rpm -qa | grep -E '^(kube|etcd|flannel|calico|istio|kubernetes-)' || true
                     ${common_checks}
                 "
             done
@@ -149,7 +152,7 @@ run_smoke() {
             run_in_container rockylinux:9 "
                 dnf install -y --allowerasing findutils grep systemd
                 dnf install -y --allowerasing /packages/*.rpm
-                rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
+                rpm -qa | grep -E '^(kube|etcd|flannel|calico|istio|kubernetes-)' || true
                 ${common_checks}
             "
         fi

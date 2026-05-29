@@ -40,6 +40,7 @@ kube-apiserver
 kubectl
 flannel
 calico
+istio
 certificates
 EOF
 }
@@ -166,6 +167,9 @@ case "${component}" in
         ;;
     calico)
         exec make build-calico CALICO_VERSION="${version}" PACKAGE_TYPE="${package_type}"
+        ;;
+    istio)
+        exec make build-istio ISTIO_VERSION="${version}" PACKAGE_TYPE="${package_type}"
         ;;
     certificates)
         exec make build-certificates CERT_VERSION="${version#v}" PACKAGE_TYPE="${package_type}"

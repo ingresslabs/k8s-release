@@ -163,3 +163,19 @@ services:
     entrypoint: ["sh", "-c", "cp /usr/local/bin/calico-node /output/calico-node && cp /usr/local/bin/calico-felix /output/calico-felix && cp /usr/local/bin/calico /output/calico && cp /usr/local/bin/calico-ipam /output/calico-ipam && cp /usr/local/bin/calico-kube-controllers /output/calico-kube-controllers && /usr/local/bin/package-builder.sh calico-node \"$${CALICO_VERSION}\" \"Calico Node Agent\" && /usr/local/bin/package-builder.sh calico-felix \"$${CALICO_VERSION}\" \"Calico Felix Agent\" && /usr/local/bin/package-builder.sh calico \"$${CALICO_VERSION}\" \"Calico CNI Plugin\" && /usr/local/bin/package-builder.sh calico-ipam \"$${CALICO_VERSION}\" \"Calico IPAM Plugin\" && /usr/local/bin/package-builder.sh calico-kube-controllers \"$${CALICO_VERSION}\" \"Calico Kubernetes Controllers\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
       - ./output:/output
+
+  istio-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.istio
+      args:
+        ISTIO_VERSION: "${ISTIO_VERSION:-1.30.0}"
+        ISTIO_GIT_URL: "${ISTIO_GIT_URL:-https://github.com/istio/istio.git}"
+        GO_IMAGE: "${ISTIO_GO_IMAGE:-golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3}"
+        RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
+        SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
+    environment: *package-environment
+    entrypoint: ["sh", "-c", "cp /usr/local/bin/istioctl /output/istioctl && /usr/local/bin/package-builder.sh istioctl \"$${ISTIO_VERSION}\" \"Istio Command Line Utility\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
+    volumes:
+      - ./output:/output

@@ -5,12 +5,14 @@
     "etcd_version": "v3.6.11",
     "flannel_version": "v0.28.4",
     "calico_version": "v3.32.0",
+    "istio_version": "1.30.0",
     "components": [
       "etcd",
       "kube-apiserver",
       "kube-controller-manager",
       "kube-scheduler",
       "kubectl",
+      "istio",
       "kube-proxy",
       "kubelet"
     ],
@@ -34,7 +36,8 @@
       "package_type": "rpm",
       "components": [
         "etcd",
-        "kubectl"
+        "kubectl",
+        "istio"
       ],
       "prove": false
     }

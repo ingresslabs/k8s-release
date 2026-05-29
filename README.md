@@ -1,10 +1,9 @@
 # K8s Release
 
 K8s Release builds verifiable DEB and RPM packages for Kubernetes, etcd,
-Flannel, Calico, and certificates. It is aimed at private, regulated, and
-air-gapped environments where operators need more than binaries: they need
-reproducible outputs, signed repositories, and evidence that the packages can
-be installed and checked later.
+Flannel, Calico, Istio (`istioctl`), and certificates. It is for private,
+regulated, and air-gapped environments that need reproducible packages, signed
+repositories, and replayable evidence instead of ad hoc binary downloads.
 
 For each supported version, the project can produce:
 
@@ -25,6 +24,7 @@ Build one component:
 
 ```bash
 ./k8s-release build v1.36.1 --component kubelet --format deb,rpm
+./k8s-release build 1.30.0 --component istio --format deb,rpm
 ```
 
 Verify a release:

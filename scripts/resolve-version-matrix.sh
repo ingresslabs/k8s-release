@@ -6,6 +6,7 @@ kube_version=${KUBE_VERSION:-v1.36.1}
 etcd_version=${ETCD_VERSION:-v3.6.11}
 flannel_version=${FLANNEL_VERSION:-v0.28.4}
 calico_version=${CALICO_VERSION:-v3.32.0}
+istio_version=${ISTIO_VERSION:-1.30.0}
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "ERROR: jq is required to resolve the version matrix."
@@ -18,7 +19,8 @@ if [ -n "${version_matrix}" ] && [ "${version_matrix}" != "null" ]; then
             --arg kube "${kube_version}" \
             --arg etcd "${etcd_version}" \
             --arg flannel "${flannel_version}" \
-            --arg calico "${calico_version}" '
+            --arg calico "${calico_version}" \
+            --arg istio "${istio_version}" '
             if type != "array" then
               error("version matrix must be a JSON array")
             else
@@ -26,9 +28,10 @@ if [ -n "${version_matrix}" ] && [ "${version_matrix}" != "null" ]; then
                 kube_version: (.kube_version // $kube),
                 etcd_version: (.etcd_version // $etcd),
                 flannel_version: (.flannel_version // $flannel),
-                calico_version: (.calico_version // $calico)
+                calico_version: (.calico_version // $calico),
+                istio_version: (.istio_version // $istio)
               } | . + {
-                label: ($input.label // ([.kube_version, .etcd_version, .flannel_version, .calico_version] | join("-") | gsub("[^A-Za-z0-9_.-]"; "-")))
+                label: ($input.label // ([.kube_version, .etcd_version, .flannel_version, .calico_version, .istio_version] | join("-") | gsub("[^A-Za-z0-9_.-]"; "-")))
               })
             end'
 else
@@ -36,12 +39,14 @@ else
         --arg kube "${kube_version}" \
         --arg etcd "${etcd_version}" \
         --arg flannel "${flannel_version}" \
-        --arg calico "${calico_version}" '
+        --arg calico "${calico_version}" \
+        --arg istio "${istio_version}" '
         [{
-          label: ([ $kube, $etcd, $flannel, $calico ] | join("-") | gsub("[^A-Za-z0-9_.-]"; "-")),
+          label: ([ $kube, $etcd, $flannel, $calico, $istio ] | join("-") | gsub("[^A-Za-z0-9_.-]"; "-")),
           kube_version: $kube,
           etcd_version: $etcd,
           flannel_version: $flannel,
-          calico_version: $calico
+          calico_version: $calico,
+          istio_version: $istio
         }]'
 fi

@@ -23,6 +23,10 @@ on:
         description: 'Calico version to build'
         required: false
         default: 'v3.32.0'
+      istio_version:
+        description: 'Istio version to build'
+        required: false
+        default: '1.30.0'
       package_type:
         description: 'Package type (deb, rpm, or all)'
         required: false
@@ -69,6 +73,7 @@ jobs:
           ETCD_VERSION: ${{ github.event.inputs.etcd_version || 'v3.6.11' }}
           FLANNEL_VERSION: ${{ github.event.inputs.flannel_version || 'v0.28.4' }}
           CALICO_VERSION: ${{ github.event.inputs.calico_version || 'v3.32.0' }}
+          ISTIO_VERSION: ${{ github.event.inputs.istio_version || '1.30.0' }}
         run: |
           matrix=$(./scripts/resolve-version-matrix.sh)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
@@ -93,6 +98,7 @@ jobs:
           - kubectl
           - flannel
           - calico
+          - istio
           - certificates
 
     steps:
@@ -113,6 +119,7 @@ jobs:
           ETCD_VERSION=${{ matrix.version_set.etcd_version }} \
           FLANNEL_VERSION=${{ matrix.version_set.flannel_version }} \
           CALICO_VERSION=${{ matrix.version_set.calico_version }} \
+          ISTIO_VERSION=${{ matrix.version_set.istio_version }} \
           PACKAGE_TYPE=${{ github.event.inputs.package_type || 'deb' }} \
           DOCKER_COMPOSE="docker compose" \
           make build-${{ matrix.component }}
@@ -304,6 +311,7 @@ jobs:
           ETCD_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].etcd_version }}
           FLANNEL_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].flannel_version }}
           CALICO_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].calico_version }}
+          ISTIO_VERSION: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].istio_version }}
         run: |
           ./scripts/generate-release-evidence.sh release-artifacts package-repositories release-artifacts/release-evidence.md
           cp package-repositories/repo-signing-key.asc release-artifacts/

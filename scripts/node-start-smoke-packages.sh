@@ -432,6 +432,9 @@ verify_installed_binaries() {
     for bin in etcd etcdctl kube-apiserver kube-controller-manager kube-scheduler kubectl kube-proxy; do
         command -v "${bin}" >/dev/null || fail "${bin} is not installed"
     done
+    if command -v istioctl >/dev/null 2>&1; then
+        istioctl version --remote=false >/dev/null 2>&1 || istioctl version >/dev/null 2>&1 || fail "istioctl smoke check failed"
+    fi
     if command -v kubelet >/dev/null 2>&1; then
         kubelet --version
     fi

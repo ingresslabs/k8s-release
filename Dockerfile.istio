@@ -1,0 +1,92 @@
+# syntax=docker/dockerfile:1.7
+ARG GO_IMAGE=golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
+ARG RUNTIME_IMAGE=debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
+ARG DEBIAN_SNAPSHOT=20260401T000000Z
+
+FROM ${GO_IMAGE} AS builder
+ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+RUN set -eux; \
+    . /etc/os-release; \
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME} main\n" > /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-updates main\n" >> /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
+
+ARG ISTIO_VERSION
+ARG ISTIO_GIT_URL
+
+ENV ISTIO_VERSION=${ISTIO_VERSION}
+ENV ISTIO_GIT_URL=${ISTIO_GIT_URL}
+
+ENV GO111MODULE=on
+ENV GOFLAGS="-trimpath -buildvcs=false"
+ENV GOPATH=/go
+ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+
+RUN apt-get update && apt-get install -y \
+    git \
+    bash \
+    rsync \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone ${ISTIO_GIT_URL} /istio && \
+    cd /istio && \
+    git checkout ${ISTIO_VERSION}
+
+WORKDIR /istio
+RUN mkdir -p /istio/out && \
+    GOOS=linux \
+    GOARCH=amd64 \
+    LDFLAGS='-extldflags -static -s -w' \
+    GOBUILDFLAGS='-tags=vtprotobuf,disable_pgv' \
+    common/scripts/gobuild.sh /istio/out/istioctl ./istioctl/cmd/istioctl
+
+RUN ls -l /istio/out/
+
+FROM ${RUNTIME_IMAGE}
+ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+RUN set -eux; \
+    . /etc/os-release; \
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME} main\n" > /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-updates main\n" >> /etc/apt/sources.list; \
+    printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
+
+ARG ISTIO_VERSION
+ENV ISTIO_VERSION=${ISTIO_VERSION}
+
+RUN apt-get update && apt-get install -y \
+    dpkg \
+    dpkg-dev \
+    rpm \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /istio/out/istioctl /usr/local/bin/istioctl
+COPY package-builder.sh /usr/local/bin/package-builder.sh
+
+RUN mkdir -p /systemd-units /config-files
+
+RUN chmod +x /usr/local/bin/package-builder.sh
+RUN mkdir -p /output && chmod 777 /output
+
+ENV PACKAGE_TYPE=${PACKAGE_TYPE:-deb}
+RUN /usr/local/bin/package-builder.sh istioctl "${ISTIO_VERSION}" "Istio Command Line Utility" && \
+    ls -la /output
+
+RUN chmod -R 777 /output
+
+VOLUME ["/output"]
+
+RUN cp /output/*.deb / || true
+
+ENTRYPOINT ["istioctl"]
+
+CMD ["version", "--remote=false"]

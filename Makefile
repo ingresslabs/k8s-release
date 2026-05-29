@@ -29,6 +29,10 @@ FLANNEL_GIT_URL ?= https://github.com/flannel-io/flannel.git
 CALICO_VERSION ?= v3.32.0
 CALICO_GIT_URL ?= https://github.com/projectcalico/calico.git
 
+# Define the Istio version to use
+ISTIO_VERSION ?= 1.30.0
+ISTIO_GIT_URL ?= https://github.com/istio/istio.git
+
 # Define the certificate version to use
 CERT_VERSION ?= 1.0.0
 
@@ -37,6 +41,7 @@ KUBE_GO_IMAGE ?= golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef38
 ETCD_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
 FLANNEL_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
 CALICO_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
+ISTIO_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
 RUNTIME_IMAGE ?= debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 DEBIAN_SNAPSHOT ?= 20260401T000000Z
 DOCKER_RETRY_ATTEMPTS ?= 3
@@ -66,6 +71,7 @@ help:
 	@echo "  build-kubectl           Build only kubectl"
 	@echo "  build-flannel           Build only flannel"
 	@echo "  build-calico            Build only calico"
+	@echo "  build-istio             Build only Istio (istioctl)"
 	@echo "  check-pinned-inputs     Verify Dockerfiles use digest-pinned base images"
 	@echo "  verify-packages         Verify packages in the output directory"
 	@echo "  smoke-install-packages  Install generated packages in clean containers"
@@ -93,6 +99,8 @@ help:
 	@echo "  FLANNEL_VERSION         Flannel version to use (default: v0.28.4)"
 	@echo "  CALICO_GIT_URL          Calico Git repository URL (default: https://github.com/projectcalico/calico.git)"
 	@echo "  CALICO_VERSION          Calico version to use (default: v3.32.0)"
+	@echo "  ISTIO_GIT_URL           Istio Git repository URL (default: https://github.com/istio/istio.git)"
+	@echo "  ISTIO_VERSION           Istio version to use (default: 1.30.0)"
 	@echo "  CERT_VERSION            Certificate version to use (default: 1.0.0)"
 	@echo "  KUBE_GIT_URL            Kubernetes Git repository URL (default: https://github.com/kubernetes/kubernetes.git)"
 	@echo "  KUBE_BUILDER            Use Kubernetes to build images (default: 0, set to 1 to enable)"
@@ -111,6 +119,7 @@ help:
 	@echo "  ETCD_GO_IMAGE            Digest-pinned Go image for etcd builds"
 	@echo "  FLANNEL_GO_IMAGE         Digest-pinned Go image for Flannel builds"
 	@echo "  CALICO_GO_IMAGE          Digest-pinned Go image for Calico builds"
+	@echo "  ISTIO_GO_IMAGE           Digest-pinned Go image for Istio builds"
 	@echo "  RUNTIME_IMAGE            Digest-pinned runtime/package image"
 	@echo "  DEBIAN_SNAPSHOT          Debian snapshot timestamp for apt package resolution"
 	@echo "  DOCKER_RETRY_ATTEMPTS    Retry count for Docker build/up commands (default: 3)"
@@ -254,10 +263,13 @@ define DOCKER_ARGS
     FLANNEL_VERSION=$(FLANNEL_VERSION) \
     CALICO_GIT_URL=$(CALICO_GIT_URL) \
     CALICO_VERSION=$(CALICO_VERSION) \
+    ISTIO_GIT_URL=$(ISTIO_GIT_URL) \
+    ISTIO_VERSION=$(ISTIO_VERSION) \
     KUBE_GO_IMAGE='$(KUBE_GO_IMAGE)' \
     ETCD_GO_IMAGE='$(ETCD_GO_IMAGE)' \
     FLANNEL_GO_IMAGE='$(FLANNEL_GO_IMAGE)' \
     CALICO_GO_IMAGE='$(CALICO_GO_IMAGE)' \
+    ISTIO_GO_IMAGE='$(ISTIO_GO_IMAGE)' \
     RUNTIME_IMAGE='$(RUNTIME_IMAGE)' \
     DEBIAN_SNAPSHOT=$(DEBIAN_SNAPSHOT) \
     SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -379,6 +391,14 @@ build-calico: switch-builder
 	@$(eval START_TIME := $(shell date +%s))
 	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build calico-builder
 	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up calico-builder
+	@$(BUILD_INFO)
+
+.PHONY: build-istio
+build-istio: switch-builder
+	@echo "Building istio..."
+	@$(eval START_TIME := $(shell date +%s))
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build istio-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up istio-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-certificates

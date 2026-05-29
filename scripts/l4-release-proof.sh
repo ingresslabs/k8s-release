@@ -287,6 +287,9 @@ smoke_binary() {
         kubectl)
             timeout 20s "$bin" version --client=true >/dev/null 2>&1 || timeout 20s "$bin" --help >/dev/null
             ;;
+        istioctl)
+            timeout 20s "$bin" version --remote=false >/dev/null 2>&1 || timeout 20s "$bin" version >/dev/null 2>&1 || timeout 20s "$bin" --help >/dev/null
+            ;;
         calico-node)
             timeout 20s "$bin" -v >/dev/null
             ;;
