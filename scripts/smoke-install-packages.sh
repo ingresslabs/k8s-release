@@ -138,8 +138,8 @@ run_smoke() {
                 rpm_name=$(basename "${rpm}")
                 echo "Testing RPM install path for ${rpm_name} in rockylinux:9"
                 run_in_container rockylinux:9 "
-                    dnf install -y findutils grep systemd
-                    dnf install -y /packages/${rpm_name}
+                    dnf install -y --allowerasing findutils grep systemd
+                    dnf install -y --allowerasing /packages/${rpm_name}
                     rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
                     ${common_checks}
                 "
@@ -147,8 +147,8 @@ run_smoke() {
         else
             echo "Testing RPM install path in rockylinux:9"
             run_in_container rockylinux:9 "
-                dnf install -y findutils grep systemd
-                dnf install -y /packages/*.rpm
+                dnf install -y --allowerasing findutils grep systemd
+                dnf install -y --allowerasing /packages/*.rpm
                 rpm -qa | grep -E '^(kube|etcd|flannel|calico|kubernetes-)' || true
                 ${common_checks}
             "
