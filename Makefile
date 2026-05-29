@@ -39,6 +39,8 @@ FLANNEL_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0
 CALICO_GO_IMAGE ?= golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
 RUNTIME_IMAGE ?= debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 DEBIAN_SNAPSHOT ?= 20260401T000000Z
+DOCKER_RETRY_ATTEMPTS ?= 3
+DOCKER_RETRY_DELAY_SECONDS ?= 15
 
 # Package metadata and reproducibility controls.
 PKG_MAINTAINER ?= Kubernetes Packager <maintainer@example.com>
@@ -111,6 +113,8 @@ help:
 	@echo "  CALICO_GO_IMAGE          Digest-pinned Go image for Calico builds"
 	@echo "  RUNTIME_IMAGE            Digest-pinned runtime/package image"
 	@echo "  DEBIAN_SNAPSHOT          Debian snapshot timestamp for apt package resolution"
+	@echo "  DOCKER_RETRY_ATTEMPTS    Retry count for Docker build/up commands (default: 3)"
+	@echo "  DOCKER_RETRY_DELAY_SECONDS Retry delay between Docker retries in seconds (default: 15)"
 	@echo "  SOURCE_DATE_EPOCH        Timestamp used for reproducible package metadata"
 	@echo "  PKG_MAINTAINER           Maintainer string embedded into packages"
 	@echo ""
@@ -269,16 +273,16 @@ endef
 build: switch-builder
 	@echo "Starting simple build process..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up
 	@$(BUILD_INFO)
 
 # Perform a build without using the cache
 build-no-cache: switch-builder
 	@echo "Starting build process without cache..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build --no-cache
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build --no-cache
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up
 	@$(BUILD_INFO)
 
 # Variables
@@ -309,80 +313,80 @@ clean:
 build-kube-proxy: switch-builder
 	@echo "Building kube-proxy..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-proxy-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-proxy-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-proxy-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-proxy-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kubelet
 build-kubelet: switch-builder
 	@echo "Building kubelet..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kubelet-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kubelet-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kubelet-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kubelet-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-etcd
 build-etcd: switch-builder
 	@echo "Building etcd..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build etcd-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up etcd-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build etcd-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up etcd-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kube-scheduler
 build-kube-scheduler: switch-builder
 	@echo "Building kube-scheduler..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-scheduler-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-scheduler-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-scheduler-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-scheduler-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kube-controller-manager
 build-kube-controller-manager: switch-builder
 	@echo "Building kube-controller-manager..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-controller-manager-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-controller-manager-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-controller-manager-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-controller-manager-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kube-apiserver
 build-kube-apiserver: switch-builder
 	@echo "Building kube-apiserver..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-apiserver-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-apiserver-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-apiserver-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-apiserver-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kubectl
 build-kubectl: switch-builder
 	@echo "Building kubectl..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kubectl-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kubectl-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kubectl-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kubectl-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-flannel
 build-flannel: switch-builder
 	@echo "Building flannel..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build flannel-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up flannel-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build flannel-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up flannel-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-calico
 build-calico: switch-builder
 	@echo "Building calico..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build calico-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up calico-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build calico-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up calico-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-certificates
 build-certificates: switch-builder
 	@echo "Building certificates..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build certificates-builder
-	$(DOCKER_ARGS) CERT_VERSION=$(CERT_VERSION) $(DOCKER_COMPOSE) up certificates-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build certificates-builder
+	$(DOCKER_ARGS) CERT_VERSION=$(CERT_VERSION) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up certificates-builder
 	@$(BUILD_INFO)
 
 # Target: Create a Git tag and release on GitHub
