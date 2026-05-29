@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG GO_IMAGE=golang:1.20-bookworm@sha256:9fa9101141c01e9440216d32eb2b380b3c3079bea07aeab3546020cc91b3662c
+ARG GO_IMAGE=golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
 ARG RUNTIME_IMAGE=debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 ARG DEBIAN_SNAPSHOT=20260401T000000Z
 
@@ -39,7 +39,8 @@ RUN git clone https://github.com/etcd-io/etcd.git /etcd && \
     git checkout ${ETCD_VERSION}
 
 WORKDIR /etcd
-RUN ./build
+# etcd v3.6 builds via make/scripts rather than the removed legacy ./build entrypoint.
+RUN make build
 
 RUN ls -l /etcd/bin/
 
