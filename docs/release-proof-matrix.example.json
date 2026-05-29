@@ -1,0 +1,42 @@
+{
+  "schema_version": "k8s-release.proof-matrix.v1",
+  "defaults": {
+    "package_type": "deb",
+    "etcd_version": "v3.5.9",
+    "flannel_version": "v0.26.4",
+    "calico_version": "v3.28.0",
+    "components": [
+      "etcd",
+      "kube-apiserver",
+      "kube-controller-manager",
+      "kube-scheduler",
+      "kubectl",
+      "kube-proxy",
+      "kubelet"
+    ],
+    "policy": "docs/release-proof-policy.example.yaml"
+  },
+  "sets": [
+    {
+      "label": "v1.32.1-deb-core",
+      "kube_version": "v1.32.1",
+      "prove": false
+    },
+    {
+      "label": "v1.32.2-deb-core",
+      "kube_version": "v1.32.2",
+      "previous_label": "v1.32.1-deb-core",
+      "prove": true
+    },
+    {
+      "label": "v1.32.2-rpm-cli",
+      "kube_version": "v1.32.2",
+      "package_type": "rpm",
+      "components": [
+        "etcd",
+        "kubectl"
+      ],
+      "prove": false
+    }
+  ]
+}

@@ -11,6 +11,9 @@ KUBE_BUILDER ?= 0
 # Define the Kubernetes version to use
 KUBE_VERSION ?= v1.32.2
 PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
+KUBE_AIRGAP_BUNDLE ?= k8s-$(KUBE_VERSION)-airgap.tar
+PREVIOUS_KUBE_VERSION ?=
+RELEASE_PROOF_MATRIX ?= docs/release-proof-matrix.example.json
 
 # Define the etcd version to use
 ETCD_VERSION ?= v3.5.9
@@ -36,6 +39,8 @@ FLANNEL_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0
 CALICO_GO_IMAGE ?= golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
 RUNTIME_IMAGE ?= debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 DEBIAN_SNAPSHOT ?= 20260401T000000Z
+DOCKER_RETRY_ATTEMPTS ?= 3
+DOCKER_RETRY_DELAY_SECONDS ?= 15
 
 # Package metadata and reproducibility controls.
 PKG_MAINTAINER ?= Kubernetes Packager <maintainer@example.com>
@@ -67,7 +72,14 @@ help:
 	@echo "  node-start-smoke        Start installed packages in a node smoke container"
 	@echo "  create-package-repos    Create signed apt/yum repositories from output"
 	@echo "  release-evidence        Write release evidence for generated output"
+	@echo "  release-passport        Write a release passport for generated output"
+	@echo "  airgap-bundle           Create an offline bundle with artifacts, repos, install helpers, and policy"
+	@echo "  verify-bundle           Verify an offline bundle"
+	@echo "  verify-proof            Verify a replayable release proof"
 	@echo "  verify-release          Verify a release artifact set"
+	@echo "  prove-release           Run the one-command release proof engine"
+	@echo "  prove-matrix            Build and prove release combinations from a config file"
+	@echo "  airgap-import           Verify and import an airgap bundle into AIRGAP_REPO"
 	@echo "  version                 Print the project version"
 	@echo "  bump-major              Bump the project major version"
 	@echo "  continuous-improvement  Score release readiness against the project spec"
@@ -86,6 +98,10 @@ help:
 	@echo "  KUBE_BUILDER            Use Kubernetes to build images (default: 0, set to 1 to enable)"
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
 	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
+	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
+	@echo "  PREVIOUS_KUBE_VERSION   Previous Kubernetes version for upgrade proof"
+	@echo "  RELEASE_PROOF_MATRIX    JSON matrix file for prove-matrix"
+	@echo "  AIRGAP_REPO             Local mirror directory for airgap-import"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
 	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
 	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
@@ -97,6 +113,8 @@ help:
 	@echo "  CALICO_GO_IMAGE          Digest-pinned Go image for Calico builds"
 	@echo "  RUNTIME_IMAGE            Digest-pinned runtime/package image"
 	@echo "  DEBIAN_SNAPSHOT          Debian snapshot timestamp for apt package resolution"
+	@echo "  DOCKER_RETRY_ATTEMPTS    Retry count for Docker build/up commands (default: 3)"
+	@echo "  DOCKER_RETRY_DELAY_SECONDS Retry delay between Docker retries in seconds (default: 15)"
 	@echo "  SOURCE_DATE_EPOCH        Timestamp used for reproducible package metadata"
 	@echo "  PKG_MAINTAINER           Maintainer string embedded into packages"
 	@echo ""
@@ -134,9 +152,40 @@ create-package-repos:
 release-evidence:
 	@./scripts/generate-release-evidence.sh output package-repositories release-evidence.md
 
+.PHONY: release-passport
+release-passport:
+	@./scripts/generate-release-passport.sh $(KUBE_VERSION) --artifacts release-artifacts --repos package-repositories --output release-artifacts/release-passport.md
+
+.PHONY: airgap-bundle
+airgap-bundle:
+	@./scripts/create-airgap-bundle.sh $(KUBE_VERSION) --airgap --artifacts release-artifacts --repos package-repositories --output $(KUBE_AIRGAP_BUNDLE)
+
+.PHONY: verify-bundle
+verify-bundle:
+	@./scripts/verify-bundle.sh $(KUBE_AIRGAP_BUNDLE)
+
+.PHONY: verify-proof
+verify-proof:
+	@./scripts/verify-proof.sh release-artifacts/release-proof.json
+
 .PHONY: verify-release
 verify-release:
 	@./scripts/verify-release.sh $(KUBE_VERSION)
+
+.PHONY: prove-release
+prove-release:
+	@args=""; \
+	if [ -n "$(PREVIOUS_KUBE_VERSION)" ]; then args="$$args --previous $(PREVIOUS_KUBE_VERSION)"; fi; \
+	./scripts/prove-release.sh "$(KUBE_VERSION)" $$args
+
+.PHONY: prove-matrix
+prove-matrix:
+	@./scripts/prove-release-matrix.sh --config "$(RELEASE_PROOF_MATRIX)"
+
+.PHONY: airgap-import
+airgap-import:
+	@[ -n "$(AIRGAP_REPO)" ] || { echo "ERROR: AIRGAP_REPO is required."; exit 2; }
+	@./scripts/airgap.sh import "$(KUBE_AIRGAP_BUNDLE)" --repo "$(AIRGAP_REPO)"
 
 .PHONY: version
 version:
@@ -224,16 +273,16 @@ endef
 build: switch-builder
 	@echo "Starting simple build process..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up
 	@$(BUILD_INFO)
 
 # Perform a build without using the cache
 build-no-cache: switch-builder
 	@echo "Starting build process without cache..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build --no-cache
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build --no-cache
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up
 	@$(BUILD_INFO)
 
 # Variables
@@ -264,80 +313,80 @@ clean:
 build-kube-proxy: switch-builder
 	@echo "Building kube-proxy..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-proxy-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-proxy-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-proxy-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-proxy-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kubelet
 build-kubelet: switch-builder
 	@echo "Building kubelet..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kubelet-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kubelet-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kubelet-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kubelet-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-etcd
 build-etcd: switch-builder
 	@echo "Building etcd..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build etcd-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up etcd-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build etcd-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up etcd-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kube-scheduler
 build-kube-scheduler: switch-builder
 	@echo "Building kube-scheduler..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-scheduler-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-scheduler-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-scheduler-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-scheduler-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kube-controller-manager
 build-kube-controller-manager: switch-builder
 	@echo "Building kube-controller-manager..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-controller-manager-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-controller-manager-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-controller-manager-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-controller-manager-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kube-apiserver
 build-kube-apiserver: switch-builder
 	@echo "Building kube-apiserver..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kube-apiserver-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kube-apiserver-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kube-apiserver-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kube-apiserver-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-kubectl
 build-kubectl: switch-builder
 	@echo "Building kubectl..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build kubectl-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up kubectl-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build kubectl-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up kubectl-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-flannel
 build-flannel: switch-builder
 	@echo "Building flannel..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build flannel-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up flannel-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build flannel-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up flannel-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-calico
 build-calico: switch-builder
 	@echo "Building calico..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build calico-builder
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) up calico-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build calico-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up calico-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-certificates
 build-certificates: switch-builder
 	@echo "Building certificates..."
 	@$(eval START_TIME := $(shell date +%s))
-	$(DOCKER_ARGS) $(DOCKER_COMPOSE) build certificates-builder
-	$(DOCKER_ARGS) CERT_VERSION=$(CERT_VERSION) $(DOCKER_COMPOSE) up certificates-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build certificates-builder
+	$(DOCKER_ARGS) CERT_VERSION=$(CERT_VERSION) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up certificates-builder
 	@$(BUILD_INFO)
 
 # Target: Create a Git tag and release on GitHub

@@ -6,6 +6,13 @@ usage() {
 Usage:
   k8s-release build <version> --component <name> --format <deb|rpm|deb,rpm>
   k8s-release verify-release <version> [--repo OWNER/REPO] [--dir DIR]
+  k8s-release bundle <version> --airgap [--artifacts DIR] [--repos DIR] [--output FILE]
+  k8s-release verify-bundle <bundle.tar> [--repo OWNER/REPO] [--online]
+  k8s-release verify-proof <release-proof.json>
+  k8s-release passport <version> [--artifacts DIR] [--repos DIR] [--output FILE]
+  k8s-release prove <version> [--previous VERSION] [--policy FILE]
+  k8s-release prove-matrix --config FILE [--work-dir DIR]
+  k8s-release airgap <prepare|verify|import> ...
   k8s-release version
   k8s-release components
 
@@ -13,6 +20,12 @@ Examples:
   k8s-release build v1.32.2 --component kubelet --format deb,rpm
   k8s-release build v3.5.9 --component etcd --format rpm
   k8s-release verify-release v1.32.2
+  k8s-release bundle v1.32.2 --airgap
+  k8s-release verify-bundle k8s-v1.32.2-airgap.tar
+  k8s-release verify-proof release-artifacts/release-proof.json
+  k8s-release prove v1.32.2 --previous v1.32.1
+  k8s-release prove-matrix --config docs/release-proof-matrix.example.json
+  k8s-release airgap import k8s-v1.32.2-airgap.tar --repo /mnt/mirror
 EOF
 }
 
@@ -43,6 +56,34 @@ case "${command}" in
     verify-release)
         shift
         exec ./scripts/verify-release.sh "$@"
+        ;;
+    bundle)
+        shift
+        exec ./scripts/create-airgap-bundle.sh "$@"
+        ;;
+    verify-bundle)
+        shift
+        exec ./scripts/verify-bundle.sh "$@"
+        ;;
+    verify-proof)
+        shift
+        exec ./scripts/verify-proof.sh "$@"
+        ;;
+    passport)
+        shift
+        exec ./scripts/generate-release-passport.sh "$@"
+        ;;
+    prove)
+        shift
+        exec ./scripts/prove-release.sh "$@"
+        ;;
+    prove-matrix)
+        shift
+        exec ./scripts/prove-release-matrix.sh "$@"
+        ;;
+    airgap)
+        shift
+        exec ./scripts/airgap.sh "$@"
         ;;
     version)
         cat VERSION

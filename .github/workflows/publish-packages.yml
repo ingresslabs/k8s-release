@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Verify pinned Docker inputs
         run: make check-pinned-inputs
@@ -55,7 +55,7 @@ jobs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve version matrix
         id: resolve
@@ -93,10 +93,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Install package verification tools
         run: |
@@ -170,7 +170,7 @@ jobs:
         version_set: ${{ fromJson(needs.resolve-version-matrix.outputs.matrix) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download package artifacts
         uses: actions/download-artifact@v4
@@ -207,7 +207,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install repository tools
         run: |
@@ -241,6 +241,28 @@ jobs:
           ./scripts/generate-release-evidence.sh release-artifacts package-repositories release-artifacts/release-evidence.md
           cp package-repositories/repo-signing-key.asc release-artifacts/
 
+      - name: Generate release passport
+        run: |
+          ./scripts/generate-release-passport.sh \
+            "${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].kube_version }}" \
+            --artifacts release-artifacts \
+            --repos package-repositories \
+            --output release-artifacts/release-passport.md
+
+      - name: Create airgap bundle
+        run: |
+          version="${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].kube_version }}"
+          ./scripts/create-airgap-bundle.sh "${version}" \
+            --airgap \
+            --artifacts release-artifacts \
+            --repos package-repositories \
+            --output "release-artifacts/k8s-${version}-airgap.tar"
+
+      - name: Verify airgap bundle offline
+        run: |
+          version="${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].kube_version }}"
+          ./scripts/verify-bundle.sh "release-artifacts/k8s-${version}-airgap.tar"
+
       - name: Upload combined artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -269,7 +291,7 @@ jobs:
         run: |
           (
             cd package-repositories
-            find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           )
           tar -czf kubernetes-package-repositories.tar.gz -C package-repositories .
           version="${{ fromJson(needs.resolve-version-matrix.outputs.matrix)[0].kube_version }}"

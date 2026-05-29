@@ -91,7 +91,7 @@ install_packages() {
             ;;
         rpm)
             log "Installing RPM package set"
-            dnf install -y \
+            dnf install -y --allowerasing \
                 ca-certificates \
                 conntrack-tools \
                 findutils \
@@ -104,7 +104,7 @@ install_packages() {
                 systemd
             mapfile -t packages < <(find /packages -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' | sort)
             [ "${#packages[@]}" -gt 0 ] || fail "no non-certificate RPM packages found"
-            dnf install -y "${packages[@]}"
+            dnf install -y --allowerasing "${packages[@]}"
             ;;
         *)
             fail "unsupported package format ${package_format}"

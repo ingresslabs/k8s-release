@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Verify pinned Docker inputs
         run: make check-pinned-inputs
@@ -41,10 +41,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Install package verification tools
         run: |
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download package artifacts
         uses: actions/download-artifact@v4
@@ -153,7 +153,7 @@ jobs:
       attestations: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install repository tools
         run: |
@@ -189,6 +189,28 @@ jobs:
           ./scripts/generate-release-evidence.sh release-artifacts package-repositories release-artifacts/release-evidence.md
           cp package-repositories/repo-signing-key.asc release-artifacts/
 
+      - name: Generate release passport
+        run: |
+          ./scripts/generate-release-passport.sh \
+            "${{ steps.get_version.outputs.VERSION }}" \
+            --artifacts release-artifacts \
+            --repos package-repositories \
+            --output release-artifacts/release-passport.md
+
+      - name: Create airgap bundle
+        run: |
+          version="${{ steps.get_version.outputs.VERSION }}"
+          ./scripts/create-airgap-bundle.sh "${version}" \
+            --airgap \
+            --artifacts release-artifacts \
+            --repos package-repositories \
+            --output "release-artifacts/k8s-${version}-airgap.tar"
+
+      - name: Verify airgap bundle offline
+        run: |
+          version="${{ steps.get_version.outputs.VERSION }}"
+          ./scripts/verify-bundle.sh "release-artifacts/k8s-${version}-airgap.tar"
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
@@ -220,7 +242,7 @@ jobs:
         run: |
           (
             cd package-repositories
-            find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           )
           tar -czf kubernetes-package-repositories.tar.gz -C package-repositories .
           version="${{ steps.get_version.outputs.VERSION }}"
