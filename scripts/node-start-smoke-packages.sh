@@ -21,7 +21,7 @@ fi
 
 tmp_dir=$(mktemp -d)
 cleanup() {
-    rm -rf "${tmp_dir}"
+    rm -rf "${tmp_dir}" >/dev/null 2>&1 || sudo -n rm -rf "${tmp_dir}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -67,9 +67,26 @@ dump_logs() {
 }
 
 cleanup_processes() {
-    local pid
+    local pid remaining
     for pid in "${pids[@]}"; do
         kill "${pid}" >/dev/null 2>&1 || true
+    done
+    for _ in $(seq 1 10); do
+        remaining=0
+        for pid in "${pids[@]}"; do
+            if kill -0 "${pid}" >/dev/null 2>&1; then
+                remaining=1
+                break
+            fi
+        done
+        if [ "${remaining}" -eq 0 ]; then
+            wait >/dev/null 2>&1 || true
+            return
+        fi
+        sleep 1
+    done
+    for pid in "${pids[@]}"; do
+        kill -9 "${pid}" >/dev/null 2>&1 || true
     done
     wait >/dev/null 2>&1 || true
 }
@@ -491,7 +508,6 @@ run_in_node_container() {
     local format=$2
     local workdir="${tmp_dir}/${format}-workdir"
 
-    rm -rf "${workdir}"
     mkdir -p "${workdir}"
 
     timeout --kill-after=30s "${NODE_SMOKE_CONTAINER_TIMEOUT:-15m}" \
