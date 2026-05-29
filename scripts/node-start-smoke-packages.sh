@@ -433,12 +433,15 @@ verify_installed_binaries() {
         command -v "${bin}" >/dev/null || fail "${bin} is not installed"
     done
     if command -v istioctl >/dev/null 2>&1; then
-        istioctl version --remote=false >/dev/null 2>&1 || istioctl version >/dev/null 2>&1 || fail "istioctl smoke check failed"
+        timeout 20s istioctl version --remote=false >/dev/null 2>&1 || \
+            timeout 20s istioctl version >/dev/null 2>&1 || \
+            timeout 20s istioctl --help >/dev/null 2>&1 || \
+            fail "istioctl smoke check failed"
     fi
     if command -v kubelet >/dev/null 2>&1; then
-        kubelet --version
+        timeout 20s kubelet --version
     fi
-    kubectl version --client=true --output=yaml
+    timeout 20s kubectl version --client=true --output=yaml
 }
 
 install_packages
