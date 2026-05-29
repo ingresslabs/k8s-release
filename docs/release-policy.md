@@ -23,6 +23,6 @@ git tag -a "project-v$(cat VERSION)" -m "Project release $(cat VERSION)"
 git push origin "project-v$(cat VERSION)"
 ```
 
-Package release tags use Kubernetes versions such as `v1.32.2`. Project
+Package release tags use Kubernetes versions such as `v1.36.1`. Project
 release tags use `project-v*` so project versions do not collide with
 Kubernetes package versions.

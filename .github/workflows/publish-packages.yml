@@ -6,19 +6,19 @@ on:
       kube_version:
         description: 'Kubernetes version to build'
         required: false
-        default: 'v1.32.2'
+        default: 'v1.36.1'
       etcd_version:
         description: 'etcd version to build'
         required: false
-        default: 'v3.5.9'
+        default: 'v3.6.11'
       flannel_version:
         description: 'Flannel version to build'
         required: false
-        default: 'v0.26.4'
+        default: 'v0.28.4'
       calico_version:
         description: 'Calico version to build'
         required: false
-        default: 'v3.28.0'
+        default: 'v3.32.0'
       package_type:
         description: 'Package type (deb, rpm, or all)'
         required: false
@@ -61,10 +61,10 @@ jobs:
         id: resolve
         env:
           VERSION_MATRIX: ${{ github.event.inputs.version_matrix }}
-          KUBE_VERSION: ${{ github.event.inputs.kube_version || 'v1.32.2' }}
-          ETCD_VERSION: ${{ github.event.inputs.etcd_version || 'v3.5.9' }}
-          FLANNEL_VERSION: ${{ github.event.inputs.flannel_version || 'v0.26.4' }}
-          CALICO_VERSION: ${{ github.event.inputs.calico_version || 'v3.28.0' }}
+          KUBE_VERSION: ${{ github.event.inputs.kube_version || 'v1.36.1' }}
+          ETCD_VERSION: ${{ github.event.inputs.etcd_version || 'v3.6.11' }}
+          FLANNEL_VERSION: ${{ github.event.inputs.flannel_version || 'v0.28.4' }}
+          CALICO_VERSION: ${{ github.event.inputs.calico_version || 'v3.32.0' }}
         run: |
           matrix=$(./scripts/resolve-version-matrix.sh)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"

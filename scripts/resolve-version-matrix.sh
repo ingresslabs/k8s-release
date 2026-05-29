@@ -2,10 +2,10 @@
 set -euo pipefail
 
 version_matrix=${VERSION_MATRIX:-}
-kube_version=${KUBE_VERSION:-v1.32.2}
-etcd_version=${ETCD_VERSION:-v3.5.9}
-flannel_version=${FLANNEL_VERSION:-v0.26.4}
-calico_version=${CALICO_VERSION:-v3.28.0}
+kube_version=${KUBE_VERSION:-v1.36.1}
+etcd_version=${ETCD_VERSION:-v3.6.11}
+flannel_version=${FLANNEL_VERSION:-v0.28.4}
+calico_version=${CALICO_VERSION:-v3.32.0}
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "ERROR: jq is required to resolve the version matrix."

@@ -12,7 +12,7 @@ evidence in the release passport.
 The one-command proof entry point is:
 
 ```bash
-./k8s-release prove v1.32.2 --previous v1.32.1 --policy docs/release-proof-policy.example.yaml
+./k8s-release prove v1.36.1 --previous v1.36.0 --policy docs/release-proof-policy.example.yaml
 ```
 
 The proof command must fail if signed-repository install, airgap install,
@@ -28,9 +28,9 @@ Replayable audit verification is:
 Airgap import is a local ceremony:
 
 ```bash
-./k8s-release airgap prepare v1.32.2 --require-l4 --require-upgrade
-./k8s-release airgap verify k8s-v1.32.2-airgap.tar
-./k8s-release airgap import k8s-v1.32.2-airgap.tar --repo /mnt/mirror
+./k8s-release airgap prepare v1.36.1 --require-l4 --require-upgrade
+./k8s-release airgap verify k8s-v1.36.1-airgap.tar
+./k8s-release airgap import k8s-v1.36.1-airgap.tar --repo /mnt/mirror
 ```
 
 Version and package-type combinations are driven by a proof matrix:

@@ -9,24 +9,24 @@ all: $(shell mkdir -p output)
 KUBE_BUILDER ?= 0
 
 # Define the Kubernetes version to use
-KUBE_VERSION ?= v1.32.2
+KUBE_VERSION ?= v1.36.1
 PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
 KUBE_AIRGAP_BUNDLE ?= k8s-$(KUBE_VERSION)-airgap.tar
 PREVIOUS_KUBE_VERSION ?=
 RELEASE_PROOF_MATRIX ?= docs/release-proof-matrix.example.json
 
 # Define the etcd version to use
-ETCD_VERSION ?= v3.5.9
+ETCD_VERSION ?= v3.6.11
 
 
 KUBE_GIT_URL ?= https://github.com/kubernetes/kubernetes.git
 
 # Define the Flannel version to use
-FLANNEL_VERSION ?= v0.26.4
+FLANNEL_VERSION ?= v0.28.4
 FLANNEL_GIT_URL ?= https://github.com/flannel-io/flannel.git
 
 # Define the Calico version to use
-CALICO_VERSION ?= v3.28.0
+CALICO_VERSION ?= v3.32.0
 CALICO_GIT_URL ?= https://github.com/projectcalico/calico.git
 
 # Define the certificate version to use
@@ -90,20 +90,20 @@ help:
 	@echo ""
 	@echo "Variables:"
 	@echo "  FLANNEL_GIT_URL         Flannel Git repository URL (default: https://github.com/flannel-io/flannel.git)"
-	@echo "  FLANNEL_VERSION         Flannel version to use (default: v0.26.4)"
+	@echo "  FLANNEL_VERSION         Flannel version to use (default: v0.28.4)"
 	@echo "  CALICO_GIT_URL          Calico Git repository URL (default: https://github.com/projectcalico/calico.git)"
-	@echo "  CALICO_VERSION          Calico version to use (default: v3.28.0)"
+	@echo "  CALICO_VERSION          Calico version to use (default: v3.32.0)"
 	@echo "  CERT_VERSION            Certificate version to use (default: 1.0.0)"
 	@echo "  KUBE_GIT_URL            Kubernetes Git repository URL (default: https://github.com/kubernetes/kubernetes.git)"
 	@echo "  KUBE_BUILDER            Use Kubernetes to build images (default: 0, set to 1 to enable)"
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
-	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
+	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.36.1)"
 	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
 	@echo "  PREVIOUS_KUBE_VERSION   Previous Kubernetes version for upgrade proof"
 	@echo "  RELEASE_PROOF_MATRIX    JSON matrix file for prove-matrix"
 	@echo "  AIRGAP_REPO             Local mirror directory for airgap-import"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
-	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
+	@echo "  ETCD_VERSION            Etcd version to use (default: v3.6.11)"
 	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
 	@echo "  COMPOSE_DOCKER_CLI_BUILD Enable Docker CLI build (set to 1)"
 	@echo "  DOCKER_BUILDKIT          Enable BuildKit for Docker builds (set to 1)"

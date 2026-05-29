@@ -24,26 +24,26 @@ make build PACKAGE_TYPE=all
 Build one component:
 
 ```bash
-./k8s-release build v1.32.2 --component kubelet --format deb,rpm
+./k8s-release build v1.36.1 --component kubelet --format deb,rpm
 ```
 
 Verify a release:
 
 ```bash
-./k8s-release verify-release v1.32.2 --repo kubekattle/k8s-release
+./k8s-release verify-release v1.36.1 --repo kubekattle/k8s-release
 ```
 
 Create and verify an airgap bundle:
 
 ```bash
-./k8s-release bundle v1.32.2 --airgap
-./k8s-release verify-bundle k8s-v1.32.2-airgap.tar
+./k8s-release bundle v1.36.1 --airgap
+./k8s-release verify-bundle k8s-v1.36.1-airgap.tar
 ```
 
 Generate a release passport:
 
 ```bash
-./k8s-release passport v1.32.2
+./k8s-release passport v1.36.1
 ```
 
 Project metadata:

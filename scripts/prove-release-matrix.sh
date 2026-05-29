@@ -283,10 +283,10 @@ for index in $(seq 0 "$((set_count - 1))"); do
     fi
 
     safe=$(safe_label "${label}")
-    kube_version=$(jq -r ".sets[${index}].kube_version // .defaults.kube_version // \"v1.32.2\"" "${config_file}")
-    etcd_version=$(jq -r ".sets[${index}].etcd_version // .defaults.etcd_version // \"v3.5.9\"" "${config_file}")
-    flannel_version=$(jq -r ".sets[${index}].flannel_version // .defaults.flannel_version // \"v0.26.4\"" "${config_file}")
-    calico_version=$(jq -r ".sets[${index}].calico_version // .defaults.calico_version // \"v3.28.0\"" "${config_file}")
+    kube_version=$(jq -r ".sets[${index}].kube_version // .defaults.kube_version // \"v1.36.1\"" "${config_file}")
+    etcd_version=$(jq -r ".sets[${index}].etcd_version // .defaults.etcd_version // \"v3.6.11\"" "${config_file}")
+    flannel_version=$(jq -r ".sets[${index}].flannel_version // .defaults.flannel_version // \"v0.28.4\"" "${config_file}")
+    calico_version=$(jq -r ".sets[${index}].calico_version // .defaults.calico_version // \"v3.32.0\"" "${config_file}")
     package_type=$(jq -r ".sets[${index}].package_type // .defaults.package_type // \"deb\"" "${config_file}")
     prove=$(jq -r ".sets[${index}].prove // false" "${config_file}")
     previous_label=$(jq -r ".sets[${index}].previous_label // \"\"" "${config_file}")
