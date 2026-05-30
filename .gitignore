@@ -216,3 +216,4 @@ prompts.local.md
 *.spec.local.md
 *-agent-harness*.log
 *-codex-adapter*
+!/AGENTS.md
