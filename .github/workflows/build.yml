@@ -2,9 +2,9 @@ name: Build Kubernetes Packages
 
 on:
   push:
-    branches: [ main ]
+    branches: [ devel, main ]
   pull_request:
-    branches: [ main ]
+    branches: [ devel, main ]
   workflow_dispatch:
     inputs:
       kube_version:

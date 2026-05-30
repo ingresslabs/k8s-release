@@ -17,6 +17,10 @@ Options:
   --previous-repos DIR        Previous package repository directory
   --output-dir DIR            Evidence output directory (default: artifact dir)
   --host-label NAME           Label used in evidence file names
+  --cluster-smoke-backend MODE  Cluster smoke backend: local or k2vm (default: local)
+  --cluster-smoke-host HOST     Remote SSH host for k2vm cluster smoke
+  --cluster-smoke-remote-dir DIR  Remote working directory for k2vm cluster smoke
+  --keep-cluster-smoke-remote  Keep the remote k2vm working directory after success
 EOF
 }
 
@@ -42,6 +46,10 @@ previous_artifact_dir=
 previous_repo_dir=
 output_dir=
 host_label=${HOSTNAME:-local}
+cluster_smoke_backend=local
+cluster_smoke_host=
+cluster_smoke_remote_dir=
+keep_cluster_smoke_remote=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -76,6 +84,22 @@ while [ "$#" -gt 0 ]; do
         --host-label)
             host_label=${2:?--host-label requires a name}
             shift 2
+            ;;
+        --cluster-smoke-backend)
+            cluster_smoke_backend=${2:?--cluster-smoke-backend requires a mode}
+            shift 2
+            ;;
+        --cluster-smoke-host)
+            cluster_smoke_host=${2:?--cluster-smoke-host requires a host}
+            shift 2
+            ;;
+        --cluster-smoke-remote-dir)
+            cluster_smoke_remote_dir=${2:?--cluster-smoke-remote-dir requires a directory}
+            shift 2
+            ;;
+        --keep-cluster-smoke-remote)
+            keep_cluster_smoke_remote=1
+            shift
             ;;
         -h|--help)
             usage
@@ -117,6 +141,18 @@ fi
 [ -d "${artifact_dir}" ] || { echo "ERROR: artifact directory not found: ${artifact_dir}" >&2; exit 1; }
 [ -d "${repo_dir}" ] || { echo "ERROR: package repository directory not found: ${repo_dir}" >&2; exit 1; }
 [ -f "${bundle}" ] || { echo "ERROR: airgap bundle not found: ${bundle}" >&2; exit 1; }
+
+case "${cluster_smoke_backend}" in
+    local|k2vm) ;;
+    *)
+        echo "ERROR: --cluster-smoke-backend must be local or k2vm." >&2
+        exit 2
+        ;;
+esac
+if [ "${cluster_smoke_backend}" = "k2vm" ] && [ -z "${cluster_smoke_host}" ]; then
+    echo "ERROR: --cluster-smoke-host is required when --cluster-smoke-backend=k2vm." >&2
+    exit 2
+fi
 
 artifact_dir=$(cd "${artifact_dir}" && pwd)
 repo_dir=$(cd "${repo_dir}" && pwd)
@@ -197,6 +233,20 @@ write_json() {
         printf '    "artifacts": "%s",\n' "$(json_escape "${artifact_dir}")"
         printf '    "repositories": "%s",\n' "$(json_escape "${repo_dir}")"
         printf '    "airgap_bundle": "%s"\n' "$(json_escape "${bundle}")"
+        printf '  },\n'
+        printf '  "cluster_smoke": {\n'
+        printf '    "backend": "%s",\n' "$(json_escape "${cluster_smoke_backend}")"
+        if [ -n "${cluster_smoke_host}" ]; then
+            printf '    "target": "%s",\n' "$(json_escape "${cluster_smoke_host}")"
+        else
+            printf '    "target": null,\n'
+        fi
+        if [ -n "${cluster_smoke_remote_dir}" ]; then
+            printf '    "remote_dir": "%s",\n' "$(json_escape "${cluster_smoke_remote_dir}")"
+        else
+            printf '    "remote_dir": null,\n'
+        fi
+        printf '    "keep_remote": %s\n' "$( [ "${keep_cluster_smoke_remote}" -eq 1 ] && printf true || printf false )"
         printf '  },\n'
         printf '  "evidence": {\n'
         printf '    "l4_smoke_report": "%s",\n' "$(json_escape "$(basename "${l4_report}")")"
@@ -444,8 +494,29 @@ airgap_install_smoke() {
 }
 
 cluster_conformance_smoke() {
-    echo "Running packaged control-plane conformance smoke"
-    ./scripts/node-start-smoke-packages.sh "${artifact_dir}"
+    case "${cluster_smoke_backend}" in
+        local)
+            echo "Running packaged control-plane conformance smoke on the local host"
+            ./scripts/node-start-smoke-packages.sh "${artifact_dir}"
+            ;;
+        k2vm)
+            local args=(
+                "${tag}"
+                --host "${cluster_smoke_host}"
+                --artifacts "${artifact_dir}"
+                --repos "${repo_dir}"
+                --output-dir "${output_dir}"
+            )
+            if [ -n "${cluster_smoke_remote_dir}" ]; then
+                args+=(--remote-dir "${cluster_smoke_remote_dir}")
+            fi
+            if [ "${keep_cluster_smoke_remote}" -eq 1 ]; then
+                args+=(--keep-remote)
+            fi
+            echo "Running packaged control-plane conformance smoke on remote k2vm host ${cluster_smoke_host}"
+            ./scripts/k2vm-cluster-smoke.sh "${args[@]}"
+            ;;
+    esac
 }
 
 airgap_bundle_gate() {

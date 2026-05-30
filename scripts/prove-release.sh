@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f ./.env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -16,6 +23,9 @@ Options:
   --repos DIR                 Current package repositories (default: package-repositories)
   --bundle FILE               Current airgap bundle (default: k8s-<version>-airgap.tar)
   --policy FILE               Policy-as-code file for release readiness
+  --host HOST                 Use remote k2vm cluster smoke on HOST or USER@HOST
+  --remote-dir DIR            Remote working directory for k2vm cluster smoke
+  --keep-remote               Keep the remote k2vm working directory after success
   --previous VERSION          Previous Kubernetes version for upgrade proof
   --previous-artifacts DIR    Previous release artifacts (default: release-artifacts-<previous>)
   --previous-repos DIR        Previous package repositories (default: package-repositories-<previous>)
@@ -23,6 +33,7 @@ Options:
 
 Example:
   k8s-release prove v1.36.1 --previous v1.36.0
+  k8s-release prove v1.36.1 --host root@proof-host --previous v1.36.0
 EOF
 }
 
@@ -54,6 +65,9 @@ previous_artifact_dir=
 previous_repo_dir=
 previous_bundle=
 policy_file=
+proof_host=
+proof_remote_dir=
+keep_proof_remote=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -73,6 +87,18 @@ while [ "$#" -gt 0 ]; do
             policy_file=${2:?--policy requires a file}
             shift 2
             ;;
+        --host)
+            proof_host=${2:?--host requires a host}
+            shift 2
+            ;;
+        --remote-dir)
+            proof_remote_dir=${2:?--remote-dir requires a directory}
+            shift 2
+            ;;
+        --keep-remote)
+            keep_proof_remote=1
+            shift
+            ;;
         --previous)
             previous_version=${2:?--previous requires a version}
             shift 2
@@ -89,11 +115,6 @@ while [ "$#" -gt 0 ]; do
             previous_bundle=${2:?--previous-bundle requires a file}
             shift 2
             ;;
-        --host|--remote-dir|--keep-remote)
-            echo "ERROR: release proof runs locally only; remote proof hosts are not supported." >&2
-            usage >&2
-            exit 2
-            ;;
         -h|--help)
             usage
             exit 0
@@ -105,6 +126,19 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+if [ -z "${proof_host}" ]; then
+    proof_host=${K8S_RELEASE_PROOF_HOST:-}
+fi
+if [ -z "${proof_remote_dir}" ]; then
+    proof_remote_dir=${K8S_RELEASE_PROOF_REMOTE_DIR:-}
+fi
+
+if [ -z "${proof_host}" ] && { [ -n "${proof_remote_dir}" ] || [ "${keep_proof_remote}" -eq 1 ]; }; then
+    echo "ERROR: --remote-dir and --keep-remote require --host." >&2
+    usage >&2
+    exit 2
+fi
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "${repo_root}"
@@ -313,7 +347,7 @@ sign_file() {
 
 write_canonical_proof() {
     local local_proof_json source_repo source_ref source_commit generated_at
-    local packages_json sboms_json reports_json manifests_json policy_json
+    local packages_json sboms_json reports_json manifests_json policy_json cluster_artifacts_json
 
     local_proof_json=$(find "${work_artifact_dir}" -maxdepth 1 -type f -name '*-release-proof.json' ! -name 'release-proof.json' | sort | head -n 1)
     [ -n "${local_proof_json}" ] || fail "missing L4 release proof JSON"
@@ -323,11 +357,13 @@ write_canonical_proof() {
     reports_json=$(mktemp)
     manifests_json=$(mktemp)
     policy_json=$(mktemp)
+    cluster_artifacts_json=$(mktemp)
 
     json_array_for_files "${work_artifact_dir}" \( -name '*.deb' -o -name '*.rpm' \) > "${packages_json}"
     json_array_for_files "${work_artifact_dir}" -name '*.spdx.json' > "${sboms_json}"
     json_array_for_files "${work_artifact_dir}" \( -name '*-smoke.txt' -o -name '*-install.txt' -o -name '*-verify.txt' -o -name 'release-evidence.md' -o -name 'release-passport.md' \) > "${reports_json}"
     json_array_for_files "${work_artifact_dir}" -name '*-release-manifest.json' > "${manifests_json}"
+    json_array_for_files "${work_artifact_dir}" -name '*-cluster-smoke-*' > "${cluster_artifacts_json}"
     if [ -n "${policy_file}" ]; then
         jq -Rs '{format: "yaml", raw: .}' "${policy_file}" > "${policy_json}"
     else
@@ -358,6 +394,7 @@ write_canonical_proof() {
         --slurpfile sboms "${sboms_json}" \
         --slurpfile reports "${reports_json}" \
         --slurpfile manifests "${manifests_json}" \
+        --slurpfile cluster_artifacts "${cluster_artifacts_json}" \
         --slurpfile policy "${policy_json}" \
         '($l4[0].gates // []) as $gates |
         {
@@ -390,6 +427,7 @@ write_canonical_proof() {
             package_checksums: $packages[0],
             sbom_references: $sboms[0],
             release_manifests: $manifests[0],
+            cluster_smoke_artifacts: $cluster_artifacts[0],
             evidence_reports: $reports[0]
           },
           gates: $gates
@@ -411,6 +449,7 @@ create_release_evidence_tar() {
             SHA256SUMS
             *-release-proof.json
             *-release-manifest.json
+            *-cluster-smoke-*
             *-smoke.txt
             *-install.txt
             *-verify.txt
@@ -467,6 +506,7 @@ enforce_policy
 previous_tag=
 previous_args=()
 require_args=(--require-l4)
+l4_cluster_smoke_args=()
 if [ -n "${previous_version}" ]; then
     previous_tag=${previous_version}
     case "${previous_tag}" in
@@ -495,14 +535,38 @@ if [ -n "${previous_version}" ]; then
     require_args+=(--require-upgrade)
 fi
 
-log "Running local release proof for ${tag}"
-./scripts/l4-release-proof.sh "${tag}" \
-    --artifacts "${work_artifact_dir}" \
-    --repos "${work_repo_dir}" \
-    --bundle "${bundle}" \
-    --output-dir "${work_artifact_dir}" \
-    --host-label local \
-    "${previous_args[@]}"
+if [ -n "${proof_host}" ]; then
+    l4_cluster_smoke_args=(
+        --cluster-smoke-backend k2vm
+        --cluster-smoke-host "${proof_host}"
+    )
+    if [ -n "${proof_remote_dir}" ]; then
+        l4_cluster_smoke_args+=(--cluster-smoke-remote-dir "${proof_remote_dir}")
+    fi
+    if [ "${keep_proof_remote}" -eq 1 ]; then
+        l4_cluster_smoke_args+=(--keep-cluster-smoke-remote)
+    fi
+    log "Running release proof for ${tag} with remote k2vm cluster smoke on ${proof_host}"
+else
+    log "Running local release proof for ${tag}"
+fi
+
+l4_proof_cmd=(
+    ./scripts/l4-release-proof.sh "${tag}"
+    --artifacts "${work_artifact_dir}"
+    --repos "${work_repo_dir}"
+    --bundle "${bundle}"
+    --output-dir "${work_artifact_dir}"
+    --host-label local
+)
+if [ "${#l4_cluster_smoke_args[@]}" -gt 0 ]; then
+    l4_proof_cmd+=("${l4_cluster_smoke_args[@]}")
+fi
+if [ "${#previous_args[@]}" -gt 0 ]; then
+    l4_proof_cmd+=("${previous_args[@]}")
+fi
+
+"${l4_proof_cmd[@]}"
 
 ensure_release_evidence "${work_artifact_dir}" "${work_repo_dir}"
 ./scripts/generate-release-passport.sh "${tag}" \
@@ -530,5 +594,5 @@ if ! same_directory "${work_artifact_dir}" "${artifact_dir}"; then
     cp -a "${work_artifact_dir}/." "${artifact_dir}/"
 fi
 
-echo "Release proof completed locally for ${tag}."
+echo "Release proof completed for ${tag}."
 echo "Evidence directory: ${artifact_dir}"

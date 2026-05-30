@@ -12,7 +12,7 @@ evidence in the release passport.
 The one-command proof entry point is:
 
 ```bash
-./k8s-release prove v1.36.1 --previous v1.36.0 --policy docs/release-proof-policy.example.yaml
+./k8s-release prove v1.36.1 --host root@proof-host --previous v1.36.0 --policy docs/release-proof-policy.example.yaml
 ```
 
 The proof command must fail if signed-repository install, airgap install,
