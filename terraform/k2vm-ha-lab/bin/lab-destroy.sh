@@ -16,6 +16,12 @@ for cmd in jq ssh scp; do
   require_cmd "${cmd}"
 done
 
+ssh_opts=(
+  -o BatchMode=yes
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=12
+)
+
 jq_get() {
   jq -r "$1" "${manifest_path}"
 }
@@ -26,8 +32,8 @@ target="${target_user}@${target_host}"
 remote_workdir="$(jq_get '.target.workdir')"
 remote_bundle="${remote_workdir}/bundle"
 
-ssh "${target}" "mkdir -p $(printf '%q' "${remote_bundle}")"
-scp "${engine_path}" "${target}:${remote_bundle}/"
+ssh "${ssh_opts[@]}" "${target}" "mkdir -p $(printf '%q' "${remote_bundle}")"
+scp "${ssh_opts[@]}" "${engine_path}" "${target}:${remote_bundle}/"
 
 subnet_prefix="$(jq_get '.cluster.subnet_prefix')"
 kubernetes_version="$(jq_get '.cluster.kubernetes_version')"
@@ -35,6 +41,8 @@ kubernetes_minor="${kubernetes_version%.*}"
 kernel_params="$(jq -r '.firecracker.kernel_params | join(" ")' "${manifest_path}")"
 pod_cidr="$(jq -r '.cluster.pod_cidr // "10.244.0.0/16"' "${manifest_path}")"
 service_cidr="$(jq -r '.cluster.service_cidr // "10.96.0.0/12"' "${manifest_path}")"
+control_plane_runtime="$(jq_get '.cluster.control_plane_runtime // "static-pods"')"
+guest_selinux_mode="$(jq_get '.guest.selinux_mode // "enforcing"')"
 
 env_args=(
   "RUN_ROOT=$(jq_get '.paths.run_root')"
@@ -50,6 +58,8 @@ env_args=(
   "POD_CIDR=${pod_cidr}"
   "SERVICE_CIDR=${service_cidr}"
   "NETWORK_PLUGIN=$(jq_get '.cluster.network_plugin')"
+  "CONTROL_PLANE_RUNTIME=${control_plane_runtime}"
+  "GUEST_SELINUX_MODE=${guest_selinux_mode}"
   "API_LB_IP=${subnet_prefix}.5"
   "API_LB_PORT=6443"
   "VCPU_COUNT=$(jq_get '.firecracker.vcpu_count')"
@@ -66,5 +76,5 @@ if [[ -n "${kernel_params}" ]]; then
 fi
 
 printf -v remote_env '%q ' "${env_args[@]}"
-ssh "${target}" "${remote_env}bash $(printf '%q' "${remote_bundle}/$(basename "${engine_path}")") delete || true"
-ssh "${target}" "rm -rf $(printf '%q' "${remote_workdir}")"
+ssh "${ssh_opts[@]}" "${target}" "${remote_env}bash $(printf '%q' "${remote_bundle}/$(basename "${engine_path}")") delete || true"
+ssh "${ssh_opts[@]}" "${target}" "rm -rf $(printf '%q' "${remote_workdir}")"

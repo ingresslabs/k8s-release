@@ -12,9 +12,15 @@ require_cmd() {
   }
 }
 
-for cmd in jq gh ssh scp unzip find mktemp; do
+for cmd in jq gh ssh scp unzip find mktemp curl; do
   require_cmd "${cmd}"
 done
+
+ssh_opts=(
+  -o BatchMode=yes
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=12
+)
 
 jq_get() {
   jq -r "$1" "${manifest_path}"
@@ -57,6 +63,7 @@ fi
 
 if [[ "${kubelet_artifact_name}" =~ ^(v[^-]+)-(v[^-]+)-(v[^-]+)-(v[^-]+)(-([^-]+))?-kubelet-packages$ ]]; then
   kubernetes_version="${BASH_REMATCH[1]}"
+  kubernetes_minor="${kubernetes_version%.*}"
   etcd_version="${BASH_REMATCH[2]}"
   flannel_version="${BASH_REMATCH[3]}"
   calico_version="${BASH_REMATCH[4]}"
@@ -100,15 +107,22 @@ for component in "${components[@]}"; do
       chmod +x "${package_repo_dir}/tools/istioctl"
     fi
   fi
+  rm -rf "${unpack_dir}" "${zip_path}"
 done
 
-ssh "${target}" "rm -rf $(printf '%q' "${remote_workdir}") && mkdir -p $(printf '%q' "${remote_bundle}/release-inputs")"
-scp "${engine_path}" "${target}:${remote_bundle}/"
-scp -r "${package_repo_dir}" "${target}:${remote_bundle}/release-inputs/package-repositories"
-ssh "${target}" "cd $(printf '%q' "${remote_bundle}/release-inputs/package-repositories/debian") && dpkg-scanpackages . /dev/null > Packages && gzip -9c Packages > Packages.gz"
+if ! find "${package_repo_dir}/debian" -maxdepth 1 -type f -name 'kubeadm_*.deb' | grep -q .; then
+  kubeadm_version="${kubernetes_version#v}-1.1"
+  kubeadm_url="https://pkgs.k8s.io/core:/stable:/${kubernetes_minor}/deb/amd64/kubeadm_${kubeadm_version}_amd64.deb"
+  curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 "${kubeadm_url}" -o "${package_repo_dir}/debian/$(basename "${kubeadm_url}")"
+fi
+
+ssh "${ssh_opts[@]}" "${target}" "rm -rf $(printf '%q' "${remote_workdir}") && mkdir -p $(printf '%q' "${remote_bundle}/release-inputs")"
+scp "${ssh_opts[@]}" "${engine_path}" "${target}:${remote_bundle}/"
+scp "${ssh_opts[@]}" -r "${package_repo_dir}" "${target}:${remote_bundle}/release-inputs/package-repositories"
+ssh "${ssh_opts[@]}" "${target}" "cd $(printf '%q' "${remote_bundle}/release-inputs/package-repositories/debian") && dpkg-scanpackages . /dev/null > Packages && gzip -9c Packages > Packages.gz"
 
 fetch_artifacts() {
-  scp -r "${target}:${run_root}/artifacts" "${output_dir}/" >/dev/null 2>&1 || true
+  scp "${ssh_opts[@]}" -r "${target}:${run_root}/artifacts" "${output_dir}/" >/dev/null 2>&1 || true
 }
 trap fetch_artifacts EXIT
 
@@ -116,6 +130,7 @@ subnet_prefix="$(jq_get '.cluster.subnet_prefix')"
 control_plane_count="$(jq_get '.cluster.control_plane_count')"
 worker_count="$(jq_get '.cluster.worker_count')"
 network_plugin="$(jq_get '.cluster.network_plugin')"
+control_plane_runtime="$(jq_get '.cluster.control_plane_runtime // "static-pods"')"
 firecracker_binary="$(jq_get '.firecracker.binary')"
 bridge_name="$(jq_get '.firecracker.bridge_name')"
 tap_prefix="$(jq_get '.firecracker.tap_prefix')"
@@ -126,12 +141,12 @@ kernel_modules_tar_path="$(jq_get '.firecracker.kernel_modules_tar_path')"
 base_rootfs_path="$(jq_get '.firecracker.base_rootfs_path')"
 vcpu_count="$(jq_get '.firecracker.vcpu_count')"
 kernel_params="$(jq -r '.firecracker.kernel_params | join(" ")' "${manifest_path}")"
+guest_selinux_mode="$(jq_get '.guest.selinux_mode // "enforcing"')"
 istio_enabled="$(jq_get '.addons.istio.enabled')"
 istio_profile="$(jq_get '.addons.istio.profile')"
 pod_cidr="$(jq -r '.cluster.pod_cidr // "10.244.0.0/16"' "${manifest_path}")"
 service_cidr="$(jq -r '.cluster.service_cidr // "10.96.0.0/12"' "${manifest_path}")"
 package_repo_mode="$(jq_get '.release.package_repository.mode')"
-kubernetes_minor="${kubernetes_version%.*}"
 api_lb_ip="${subnet_prefix}.5"
 api_lb_port="6443"
 
@@ -149,6 +164,8 @@ env_args=(
   "POD_CIDR=${pod_cidr}"
   "SERVICE_CIDR=${service_cidr}"
   "NETWORK_PLUGIN=${network_plugin}"
+  "CONTROL_PLANE_RUNTIME=${control_plane_runtime}"
+  "GUEST_SELINUX_MODE=${guest_selinux_mode}"
   "API_LB_IP=${api_lb_ip}"
   "API_LB_PORT=${api_lb_port}"
   "VCPU_COUNT=${vcpu_count}"
@@ -179,6 +196,6 @@ if [[ "${istio_enabled}" == "true" ]]; then
 fi
 
 printf -v remote_env '%q ' "${env_args[@]}"
-ssh "${target}" "${remote_env}bash $(printf '%q' "${remote_bundle}/$(basename "${engine_path}")") apply"
+ssh "${ssh_opts[@]}" "${target}" "${remote_env}bash $(printf '%q' "${remote_bundle}/$(basename "${engine_path}")") apply"
 trap - EXIT
 fetch_artifacts

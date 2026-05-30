@@ -43,6 +43,9 @@ POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
 SERVICE_CIDR="${SERVICE_CIDR:-10.96.0.0/12}"
 CNI_PLUGINS_VERSION="${CNI_PLUGINS_VERSION:-v1.3.0}"
 NETWORK_PLUGIN="${NETWORK_PLUGIN:-flannel}"
+CONTROL_PLANE_RUNTIME="${CONTROL_PLANE_RUNTIME:-static-pods}"
+GUEST_SELINUX_MODE="${GUEST_SELINUX_MODE:-enforcing}"
+NSJAIL_VERSION="${NSJAIL_VERSION:-3.6}"
 CILIUM_VERSION="${CILIUM_VERSION:-v1.19.4}"
 CILIUM_CLI_VERSION="${CILIUM_CLI_VERSION:-}"
 CILIUM_CONNECTIVITY_TEST="${CILIUM_CONNECTIVITY_TEST:-0}"
@@ -73,6 +76,11 @@ GATEWAY="${SUBNET_PREFIX}.1"
 PRIMARY_CONTROL_PLANE_IP="${SUBNET_PREFIX}.10"
 CIDR="${SUBNET_PREFIX}.0/24"
 ARTIFACT_PREFIX="/var/log/kubeadm-ha-lab"
+ARTIFACT_DIR="${RUN_ROOT}/artifacts"
+HOST_TOOLS_DIR="${RUN_ROOT}/host-tools"
+HOST_KUBECTL_ROOT="${HOST_TOOLS_DIR}/kubectl-root"
+HOST_KUBECTL_BIN="${HOST_TOOLS_DIR}/kubectl"
+HOST_KUBECONFIG_PATH="${HOST_TOOLS_DIR}/kubeconfig.yaml"
 APPLY_ACTIVE="0"
 
 if [[ "${MODE}" != "apply" && "${MODE}" != "delete" && "${MODE}" != "status" ]]; then
@@ -151,6 +159,26 @@ validate_config() {
       exit 2
       ;;
   esac
+  case "${CONTROL_PLANE_RUNTIME}" in
+    static-pods|nsjail)
+      ;;
+    *)
+      echo "CONTROL_PLANE_RUNTIME must be static-pods or nsjail" >&2
+      exit 2
+      ;;
+  esac
+  case "${GUEST_SELINUX_MODE}" in
+    disabled|permissive|enforcing)
+      ;;
+    *)
+      echo "GUEST_SELINUX_MODE must be disabled, permissive, or enforcing" >&2
+      exit 2
+      ;;
+  esac
+  if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" && -z "${PACKAGE_REPO_ROOT}" ]]; then
+    echo "CONTROL_PLANE_RUNTIME=nsjail requires PACKAGE_REPO_ROOT with k8s-release control-plane packages" >&2
+    exit 2
+  fi
   if [[ -n "${PACKAGE_REPO_ROOT}" ]]; then
     [[ -d "${PACKAGE_REPO_ROOT}/debian" ]] || {
       echo "PACKAGE_REPO_ROOT must contain debian/: ${PACKAGE_REPO_ROOT}" >&2
@@ -439,7 +467,10 @@ prepare_base_image() {
       printf 'cni_plugins=%s\n' "${CNI_PLUGINS_VERSION}"
       printf 'flannel_manifest_url=%s\n' "${FLANNEL_MANIFEST_URL}"
       printf 'rootfs_size_gib=%s\n' "${ROOTFS_SIZE_GIB}"
-      printf 'generation=kubeadm-firecracker-ha-v7\n'
+      printf 'control_plane_runtime=%s\n' "${CONTROL_PLANE_RUNTIME}"
+      printf 'guest_selinux_mode=%s\n' "${GUEST_SELINUX_MODE}"
+      printf 'nsjail_version=%s\n' "${NSJAIL_VERSION}"
+      printf 'generation=kubeadm-firecracker-ha-v9\n'
     } | sha256sum | awk '{print substr($1,1,16)}'
   )"
   prepared="${CACHE_ROOT}/prepared-${key}.ext4"
@@ -542,7 +573,7 @@ prepare_base_image() {
   fi
   if ! DEBIAN_FRONTEND=noninteractive chroot "${mnt}" /usr/bin/apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
     -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install -y --no-install-recommends \
-    apt-transport-https ca-certificates conntrack curl ebtables ethtool gpg iptables ipset jq openssh-server socat tar xz-utils >"${CACHE_ROOT}/apt-install-base-${key}.log" 2>&1; then
+    apt-transport-https ca-certificates conntrack curl ebtables ethtool gpg iptables ipset jq openssh-server python3 python3-yaml socat tar xz-utils >"${CACHE_ROOT}/apt-install-base-${key}.log" 2>&1; then
     cat "${CACHE_ROOT}/apt-install-base-${key}.log" >&2
     prepare_failed="1"
     return 1
@@ -575,6 +606,31 @@ prepare_base_image() {
     cat "${CACHE_ROOT}/apt-install-containerd-${key}.log" >&2
     prepare_failed="1"
     return 1
+  fi
+
+  if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" ]]; then
+    local nsjail_src_dir="/usr/local/src/nsjail-${NSJAIL_VERSION}"
+    if ! DEBIAN_FRONTEND=noninteractive chroot "${mnt}" /usr/bin/apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
+      -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install -y --no-install-recommends \
+      autoconf bison flex g++ gcc git libnl-route-3-dev libprotobuf-dev libtool make pkg-config protobuf-compiler >"${CACHE_ROOT}/apt-install-nsjail-builddeps-${key}.log" 2>&1; then
+      cat "${CACHE_ROOT}/apt-install-nsjail-builddeps-${key}.log" >&2
+      prepare_failed="1"
+      return 1
+    fi
+    rm -rf "${mnt}${nsjail_src_dir}"
+    mkdir -p "${mnt}/usr/local/src"
+    if ! git clone --branch "${NSJAIL_VERSION}" --depth 1 --recurse-submodules --shallow-submodules https://github.com/google/nsjail.git "${mnt}${nsjail_src_dir}" >"${CACHE_ROOT}/nsjail-clone-${key}.log" 2>&1; then
+      cat "${CACHE_ROOT}/nsjail-clone-${key}.log" >&2
+      echo "failed to clone nsjail source tree ${NSJAIL_VERSION}" >&2
+      prepare_failed="1"
+      return 1
+    fi
+    if ! chroot "${mnt}" /usr/bin/make -C "${nsjail_src_dir}" >"${CACHE_ROOT}/nsjail-build-${key}.log" 2>&1; then
+      cat "${CACHE_ROOT}/nsjail-build-${key}.log" >&2
+      prepare_failed="1"
+      return 1
+    fi
+    install -m 0755 "${mnt}${nsjail_src_dir}/nsjail" "${mnt}/usr/local/bin/nsjail"
   fi
 
   if [[ -n "${PACKAGE_REPO_ROOT}" ]]; then
@@ -612,15 +668,21 @@ prepare_base_image() {
     prepare_failed="1"
     return 1
   fi
-  local kubernetes_pkg_version=""
+  local kubernetes_pkg_names=(kubelet kubeadm kubectl)
+  local repo_only_pkg_names=()
   local install_kubernetes_args=()
   local package_name=""
   local package_version_pattern=""
   local selected_version=""
   local selected_source=""
+  local apt_cache_cmd=""
+  if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" ]]; then
+    kubernetes_pkg_names+=(kube-apiserver kube-controller-manager kube-scheduler)
+    repo_only_pkg_names+=(etcd etcdctl)
+  fi
   if [[ -n "${KUBERNETES_VERSION}" ]]; then
     package_version_pattern="^${KUBERNETES_VERSION#v}(-|$)"
-    for package_name in kubelet kubeadm kubectl; do
+    for package_name in "${kubernetes_pkg_names[@]}"; do
       selected_version=""
       selected_source=""
       if [[ -n "${PACKAGE_REPO_ROOT}" ]]; then
@@ -649,15 +711,39 @@ prepare_base_image() {
       install_kubernetes_args+=("${package_name}=${selected_version}")
     done
   else
-    install_kubernetes_args=(kubelet kubeadm kubectl)
+    install_kubernetes_args=("${kubernetes_pkg_names[@]}")
   fi
+  for package_name in "${repo_only_pkg_names[@]}"; do
+    selected_version=""
+    if [[ -n "${PACKAGE_REPO_ROOT}" ]]; then
+      apt_cache_cmd="apt-cache madison ${package_name} | awk '\$1 == \"${package_name}\" && \$0 ~ /file:\\/opt\\/k8s-release-repo\\/debian/ {print \$3; exit}'"
+      selected_version="$(chroot "${mnt}" /bin/bash -lc "${apt_cache_cmd}")"
+    fi
+    if [[ -n "${selected_version}" ]]; then
+      echo "selected ${package_name} ${selected_version} from k8s-release-repo" >&2
+      install_kubernetes_args+=("${package_name}=${selected_version}")
+    elif [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" ]]; then
+      echo "required nsjail package ${package_name} is not available from the configured k8s-release repository" >&2
+      chroot "${mnt}" /bin/bash -lc "apt-cache madison ${package_name} | head -n 20" >&2 || true
+      prepare_failed="1"
+      return 1
+    else
+      install_kubernetes_args+=("${package_name}")
+    fi
+  done
   if ! DEBIAN_FRONTEND=noninteractive chroot "${mnt}" /usr/bin/apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
     -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install -y "${install_kubernetes_args[@]}" >"${CACHE_ROOT}/apt-install-kubernetes-${key}.log" 2>&1; then
     cat "${CACHE_ROOT}/apt-install-kubernetes-${key}.log" >&2
     prepare_failed="1"
     return 1
   fi
-  chroot "${mnt}" /usr/bin/apt-mark hold kubelet kubeadm kubectl >/dev/null 2>&1 || true
+  chroot "${mnt}" /usr/bin/apt-mark hold "${kubernetes_pkg_names[@]}" "${repo_only_pkg_names[@]}" >/dev/null 2>&1 || true
+  if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" ]]; then
+    local unit_name=""
+    for unit_name in etcd kube-apiserver kube-controller-manager kube-scheduler; do
+      systemctl --root="${mnt}" disable "${unit_name}" >/dev/null 2>&1 || true
+    done
+  fi
 
   mkdir -p "${CACHE_ROOT}/downloads"
   local cni_archive="${CACHE_ROOT}/downloads/cni-plugins-linux-${cni_arch_value}-${CNI_PLUGINS_VERSION}.tgz"
@@ -683,9 +769,18 @@ prepare_base_image() {
     return 1
   fi
   sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' "${mnt}/etc/containerd/config.toml"
-  sed -i 's/enable_selinux = false/enable_selinux = true/' "${mnt}/etc/containerd/config.toml" || true
+  if [[ "${GUEST_SELINUX_MODE}" == "disabled" ]]; then
+    sed -i 's/enable_selinux = true/enable_selinux = false/' "${mnt}/etc/containerd/config.toml" || true
+    sed -i 's/enable_selinux = false/enable_selinux = false/' "${mnt}/etc/containerd/config.toml" || true
+  else
+    sed -i 's/enable_selinux = false/enable_selinux = true/' "${mnt}/etc/containerd/config.toml" || true
+  fi
   if [[ -n "${pause_image}" ]]; then
     sed -i "s#sandbox_image = \".*\"#sandbox_image = \"${pause_image}\"#" "${mnt}/etc/containerd/config.toml"
+  fi
+
+  if [[ -f "${mnt}/etc/selinux/config" ]]; then
+    sed -i "s/^SELINUX=.*/SELINUX=${GUEST_SELINUX_MODE}/" "${mnt}/etc/selinux/config" || true
   fi
 
   prepare_failed="0"
@@ -918,6 +1013,62 @@ copy_guest_file() {
   fi
 }
 
+prepare_host_kubectl() {
+  local kubectl_deb=""
+  local extracted_bin=""
+  mkdir -p "${HOST_TOOLS_DIR}" "${ARTIFACT_DIR}"
+  if command -v kubectl >/dev/null 2>&1; then
+    HOST_KUBECTL_BIN="$(command -v kubectl)"
+    return 0
+  fi
+  if [[ -x "${HOST_KUBECTL_BIN}" ]]; then
+    return 0
+  fi
+  [[ -n "${PACKAGE_REPO_ROOT}" ]] || {
+    echo "PACKAGE_REPO_ROOT is required to prepare host kubectl" >&2
+    return 1
+  }
+  kubectl_deb="$(find "${PACKAGE_REPO_ROOT}/debian" -maxdepth 1 -type f -name 'kubectl_*.deb' | sort | tail -n1)"
+  [[ -n "${kubectl_deb}" ]] || {
+    echo "failed to locate kubectl package under ${PACKAGE_REPO_ROOT}/debian" >&2
+    return 1
+  }
+  rm -rf "${HOST_KUBECTL_ROOT}"
+  mkdir -p "${HOST_KUBECTL_ROOT}"
+  dpkg-deb -x "${kubectl_deb}" "${HOST_KUBECTL_ROOT}"
+  extracted_bin="$(find "${HOST_KUBECTL_ROOT}" -type f -name kubectl | sort | head -n1)"
+  [[ -n "${extracted_bin}" && -x "${extracted_bin}" ]] || {
+    echo "failed to extract kubectl from ${kubectl_deb}" >&2
+    return 1
+  }
+  ln -sf "${extracted_bin}" "${HOST_TOOLS_DIR}/kubectl"
+}
+
+export_host_kubeconfig() {
+  local tmp_path="${HOST_KUBECONFIG_PATH}.tmp"
+  mkdir -p "${HOST_TOOLS_DIR}" "${ARTIFACT_DIR}"
+  copy_guest_file "/etc/kubernetes/admin.conf" "${tmp_path}"
+  [[ -s "${tmp_path}" ]] || {
+    echo "failed to copy /etc/kubernetes/admin.conf from the primary control plane" >&2
+    rm -f "${tmp_path}"
+    return 1
+  }
+  mv "${tmp_path}" "${HOST_KUBECONFIG_PATH}"
+  chmod 600 "${HOST_KUBECONFIG_PATH}"
+}
+
+host_kubectl() {
+  [[ -x "${HOST_KUBECTL_BIN}" ]] || {
+    echo "host kubectl is not prepared: ${HOST_KUBECTL_BIN}" >&2
+    return 1
+  }
+  [[ -s "${HOST_KUBECONFIG_PATH}" ]] || {
+    echo "host kubeconfig is missing: ${HOST_KUBECONFIG_PATH}" >&2
+    return 1
+  }
+  KUBECONFIG="${HOST_KUBECONFIG_PATH}" "${HOST_KUBECTL_BIN}" "$@"
+}
+
 prepare_node_runtime() {
   local idx="$1"
   node_ssh "${idx}" "cat >/root/prepare-node.sh" <<'EOF'
@@ -939,12 +1090,293 @@ EOF
   node_ssh "${idx}" "chmod +x /root/prepare-node.sh && /root/prepare-node.sh"
 }
 
+migrate_control_plane_node_to_nsjail() {
+  local idx="$1"
+  local name
+  name="$(node_name "${idx}")"
+
+node_ssh "${idx}" "cat >/root/migrate-control-plane-to-nsjail.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ETCDCTL_BIN="${ETCDCTL_BIN:-$(command -v etcdctl 2>/dev/null || true)}"
+if [[ -z "${ETCDCTL_BIN}" ]]; then
+  ETCDCTL_BIN="/usr/local/bin/etcdctl"
+fi
+
+components=(etcd kube-apiserver kube-controller-manager kube-scheduler)
+backup_dir="/etc/kubernetes/manifests.static-pods"
+runtime_dir="/etc/kubernetes/nsjail"
+script_dir="/usr/local/sbin"
+log_dir="/var/log/nsjail-k8s"
+rollback_needed="1"
+
+rollback() {
+  local comp=""
+  set +e
+  for comp in "${components[@]}"; do
+    systemctl stop "k2vm-${comp}-nsjail.service" >/dev/null 2>&1 || true
+    systemctl disable "k2vm-${comp}-nsjail.service" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/k2vm-${comp}-nsjail.service" "${script_dir}/run-${comp}-nsjail.sh"
+    if [[ -f "${backup_dir}/${comp}.yaml" && ! -f "/etc/kubernetes/manifests/${comp}.yaml" ]]; then
+      mv "${backup_dir}/${comp}.yaml" "/etc/kubernetes/manifests/${comp}.yaml"
+    fi
+  done
+  systemctl daemon-reload || true
+  systemctl start kubelet >/dev/null 2>&1 || true
+}
+
+trap 'if [[ "${rollback_needed}" == "1" ]]; then rollback; fi' ERR
+
+mkdir -p "${backup_dir}" "${runtime_dir}" "${script_dir}" "${log_dir}" /etc/systemd/system
+
+echo "[stage] render-nsjail-units" >&2
+python3 - <<'PY'
+import pathlib
+import shlex
+import shutil
+import yaml
+
+components = [
+    ("etcd", [], ["network-online.target"], ["network-online.target"]),
+    ("kube-apiserver", ["k2vm-etcd-nsjail.service"], ["network-online.target", "k2vm-etcd-nsjail.service"], ["network-online.target", "k2vm-etcd-nsjail.service"]),
+    ("kube-controller-manager", ["k2vm-kube-apiserver-nsjail.service"], ["k2vm-kube-apiserver-nsjail.service"], ["k2vm-kube-apiserver-nsjail.service"]),
+    ("kube-scheduler", ["k2vm-kube-apiserver-nsjail.service"], ["k2vm-kube-apiserver-nsjail.service"], ["k2vm-kube-apiserver-nsjail.service"]),
+]
+manifests_dir = pathlib.Path("/etc/kubernetes/manifests")
+script_dir = pathlib.Path("/usr/local/sbin")
+log_dir = pathlib.Path("/var/log/nsjail-k8s")
+unit_dir = pathlib.Path("/etc/systemd/system")
+nsjail_bin = pathlib.Path("/usr/local/bin/nsjail")
+if not nsjail_bin.exists():
+    raise SystemExit("nsjail binary is missing at /usr/local/bin/nsjail")
+
+nsjail_base = [
+    str(nsjail_bin),
+    "-Mo",
+    "--time_limit", "0",
+    "--disable_rlimits",
+    "--chroot", "/",
+    "--rw",
+    "--keep_env",
+    "--keep_caps",
+    "--disable_clone_newnet",
+    "--disable_clone_newuser",
+    "--disable_clone_newcgroup",
+]
+
+for component, requires, after, wants in components:
+    manifest_path = manifests_dir / f"{component}.yaml"
+    if not manifest_path.exists():
+        raise SystemExit(f"missing kubeadm manifest: {manifest_path}")
+    data = yaml.safe_load(manifest_path.read_text())
+    container = data["spec"]["containers"][0]
+    command = list(container.get("command") or [])
+    command.extend(container.get("args") or [])
+    if not command:
+        raise SystemExit(f"manifest has no command array: {manifest_path}")
+    if not command[0].startswith("/"):
+        resolved = shutil.which(command[0], path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+        if not resolved:
+            raise SystemExit(f"unable to resolve host binary for {component}: {command[0]}")
+        command[0] = resolved
+    env_pairs = [(item["name"], item.get("value", "")) for item in container.get("env", [])]
+    wrapper_path = script_dir / f"run-{component}-nsjail.sh"
+    wrapper_lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    ]
+    for key, value in env_pairs:
+        wrapper_lines.append(f"export {key}={shlex.quote(value)}")
+    nsjail_cmd = nsjail_base + ["--log", str(log_dir / f"{component}.log"), "--"] + command
+    wrapper_lines.append("exec " + " ".join(shlex.quote(item) for item in nsjail_cmd))
+    wrapper_path.write_text("\n".join(wrapper_lines) + "\n")
+    wrapper_path.chmod(0o755)
+
+    unit_name = f"k2vm-{component}-nsjail.service"
+    unit_lines = [
+        "[Unit]",
+        f"Description=Kubernetes {component} under nsjail",
+    ]
+    if after:
+        unit_lines.append("After=" + " ".join(after))
+    if wants:
+        unit_lines.append("Wants=" + " ".join(wants))
+    if requires:
+        unit_lines.append("Requires=" + " ".join(requires))
+    unit_lines.extend(
+        [
+            "",
+            "[Service]",
+            "Type=simple",
+            f"ExecStart={wrapper_path}",
+            "Restart=always",
+            "RestartSec=5",
+            "TimeoutStopSec=30",
+            "KillMode=mixed",
+            "LimitNOFILE=40000",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+        ]
+    )
+    (unit_dir / unit_name).write_text("\n".join(unit_lines) + "\n")
+PY
+
+echo "[stage] stop-kubelet" >&2
+systemctl stop kubelet >/dev/null 2>&1 || true
+
+echo "[stage] move-static-manifests" >&2
+for comp in "${components[@]}"; do
+  if [[ -f "/etc/kubernetes/manifests/${comp}.yaml" ]]; then
+    mv "/etc/kubernetes/manifests/${comp}.yaml" "${backup_dir}/${comp}.yaml"
+  fi
+done
+
+kill_pid_and_task() {
+  local pid="$1"
+  local task_id=""
+  [[ -n "${pid}" ]] || return 0
+  if command -v ctr >/dev/null 2>&1; then
+    while IFS= read -r task_id; do
+      [[ -n "${task_id}" ]] || continue
+      ctr -n k8s.io tasks kill -s SIGKILL "${task_id}" >/dev/null 2>&1 || true
+      ctr -n k8s.io tasks rm -f "${task_id}" >/dev/null 2>&1 || true
+      ctr -n k8s.io containers rm "${task_id}" >/dev/null 2>&1 || true
+    done < <(ctr -n k8s.io tasks ls 2>/dev/null | awk -v pid="${pid}" '$2 == pid {print $1}')
+  fi
+  kill -TERM "${pid}" >/dev/null 2>&1 || true
+  sleep 1
+  kill -KILL "${pid}" >/dev/null 2>&1 || true
+}
+
+echo "[stage] terminate-static-control-plane" >&2
+pkill -f '(^|/)etcd($| )' >/dev/null 2>&1 || true
+pkill -f 'kube-apiserver' >/dev/null 2>&1 || true
+pkill -f 'kube-controller-manager' >/dev/null 2>&1 || true
+pkill -f 'kube-scheduler' >/dev/null 2>&1 || true
+while IFS= read -r pid; do
+  kill_pid_and_task "${pid}"
+done < <(ss -lntpH | grep -E ':(2379|2380|6443|10257|10259)[[:space:]]' | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u)
+sleep 2
+
+systemctl daemon-reload
+
+wait_port_clear() {
+  local port="$1"
+  local pid=""
+  for _ in $(seq 1 60); do
+    if ! ss -lntH "( sport = :${port} )" | grep -q .; then
+      return 0
+    fi
+    while IFS= read -r pid; do
+      kill_pid_and_task "${pid}"
+    done < <(ss -lntpH "( sport = :${port} )" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u)
+    sleep 2
+  done
+  return 1
+}
+
+echo "[stage] wait-old-ports-clear" >&2
+for port in 2379 2380 6443 10257 10259; do
+  wait_port_clear "${port}"
+done
+
+echo "[stage] start-nsjail-etcd" >&2
+systemctl enable --now k2vm-etcd-nsjail.service >/dev/null
+etcd_ready="0"
+for _ in $(seq 1 60); do
+  if ETCDCTL_API=3 "${ETCDCTL_BIN}" \
+    --endpoints=https://127.0.0.1:2379 \
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+    --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+    --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+    endpoint health >/dev/null 2>&1; then
+    etcd_ready="1"
+    break
+  fi
+  sleep 2
+done
+[[ "${etcd_ready}" == "1" ]]
+
+echo "[stage] start-nsjail-apiserver" >&2
+systemctl enable --now k2vm-kube-apiserver-nsjail.service >/dev/null
+api_ready="0"
+for _ in $(seq 1 60); do
+  if curl -ksSf https://127.0.0.1:6443/readyz >/dev/null 2>&1; then
+    api_ready="1"
+    break
+  fi
+  sleep 2
+done
+[[ "${api_ready}" == "1" ]]
+
+echo "[stage] start-nsjail-controllers" >&2
+systemctl enable --now k2vm-kube-controller-manager-nsjail.service >/dev/null
+systemctl enable --now k2vm-kube-scheduler-nsjail.service >/dev/null
+for unit in k2vm-etcd-nsjail.service k2vm-kube-apiserver-nsjail.service k2vm-kube-controller-manager-nsjail.service k2vm-kube-scheduler-nsjail.service; do
+  systemctl is-active --quiet "${unit}"
+done
+
+echo "[stage] verify-nsjail-runtime" >&2
+python3 - <<'PY'
+import pathlib
+import subprocess
+
+components = ["etcd", "kube-apiserver", "kube-controller-manager", "kube-scheduler"]
+
+for component in components:
+    unit = f"k2vm-{component}-nsjail.service"
+    main_pid = subprocess.check_output(
+        ["systemctl", "show", "-p", "MainPID", "--value", unit],
+        text=True,
+    ).strip()
+    if not main_pid or main_pid == "0":
+        raise SystemExit(f"{unit} has no MainPID")
+    cmdline = subprocess.check_output(["ps", "-p", main_pid, "-o", "cmd="], text=True).strip()
+    if "nsjail" not in cmdline:
+        raise SystemExit(f"{unit} is not running under nsjail: {cmdline}")
+    component_mnt_ns = pathlib.Path(f"/proc/{main_pid}/ns/mnt").readlink()
+    component_pid_ns = pathlib.Path(f"/proc/{main_pid}/ns/pid").readlink()
+    print(component, main_pid, component_mnt_ns, component_pid_ns)
+PY
+
+echo "[stage] restart-kubelet" >&2
+systemctl start kubelet >/dev/null 2>&1 || true
+systemctl restart ssh >/dev/null 2>&1 || systemctl restart sshd >/dev/null 2>&1 || true
+
+rollback_needed="0"
+trap - ERR
+EOF
+  node_ssh "${idx}" "chmod +x /root/migrate-control-plane-to-nsjail.sh && /root/migrate-control-plane-to-nsjail.sh" >"${RUN_ROOT}/nsjail-migrate-${name}.log" 2>&1
+}
+
+migrate_control_planes_to_nsjail() {
+  if [[ "${CONTROL_PLANE_RUNTIME}" != "nsjail" ]]; then
+    return 0
+  fi
+
+  local order=()
+  local i
+  for i in $(seq 1 "$((CONTROL_PLANE_COUNT - 1))"); do
+    order+=("${i}")
+  done
+  order+=(0)
+
+  for i in "${order[@]}"; do
+    migrate_control_plane_node_to_nsjail "${i}"
+    wait_for_node_ready "$(node_name "${i}")"
+    wait_for_cluster
+  done
+}
+
 wait_for_flannel() {
   local flannel_ns=""
   for _ in $(seq 1 180); do
-    flannel_ns="$(server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf get daemonset -A --no-headers 2>/dev/null | awk '\$2==\"kube-flannel-ds\"{print \$1; exit}'" || true)"
+    flannel_ns="$(host_kubectl get daemonset -A --no-headers 2>/dev/null | awk '$2=="kube-flannel-ds"{print $1; exit}' || true)"
     if [[ -n "${flannel_ns}" ]]; then
-      if server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n ${flannel_ns} rollout status daemonset/kube-flannel-ds --timeout=5s" >/dev/null 2>&1; then
+      if host_kubectl -n "${flannel_ns}" rollout status daemonset/kube-flannel-ds --timeout=5s >/dev/null 2>&1; then
         return 0
       fi
     fi
@@ -1037,13 +1469,14 @@ printf '%s\n' "\${certificate_key}" >/root/certificate-key.txt
 printf '%s\n' "\${join_cmd}" >/root/join-command.txt
 EOF
   server_ssh "chmod +x /root/init-primary.sh && /root/init-primary.sh" >"${RUN_ROOT}/kubeadm-init.log" 2>&1
+  export_host_kubeconfig
   install_network_plugin
 }
 
 wait_for_node_ready() {
   local name="$1"
   for _ in $(seq 1 240); do
-    if server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf get node ${name} --no-headers 2>/dev/null | awk '\$2==\"Ready\"{ok=1} END{exit(ok?0:1)}'"; then
+    if host_kubectl get node "${name}" --no-headers 2>/dev/null | awk '$2=="Ready"{ok=1} END{exit(ok?0:1)}'; then
       return 0
     fi
     sleep 2
@@ -1096,11 +1529,12 @@ EOF
 }
 
 snapshot_cluster_status() {
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o wide > ${ARTIFACT_PREFIX}.nodes 2>&1 || true
-kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes --no-headers > ${ARTIFACT_PREFIX}.nodes-plain 2>&1 || true
-kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -A -o wide > ${ARTIFACT_PREFIX}.pods 2>&1 || true
-kubectl --kubeconfig /etc/kubernetes/admin.conf get svc -A -o wide > ${ARTIFACT_PREFIX}.services 2>&1 || true
-kubectl --kubeconfig /etc/kubernetes/admin.conf get endpoints kubernetes -o wide > ${ARTIFACT_PREFIX}.apiserver-endpoints 2>&1 || true" >/dev/null 2>&1 || true
+  mkdir -p "${ARTIFACT_DIR}"
+  host_kubectl get nodes -o wide >"${ARTIFACT_DIR}/nodes.txt" 2>&1 || true
+  host_kubectl get nodes --no-headers >"${ARTIFACT_DIR}/nodes-plain.txt" 2>&1 || true
+  host_kubectl get pods -A -o wide >"${ARTIFACT_DIR}/pods.txt" 2>&1 || true
+  host_kubectl get svc -A -o wide >"${ARTIFACT_DIR}/services.txt" 2>&1 || true
+  host_kubectl get endpoints kubernetes -o wide >"${ARTIFACT_DIR}/apiserver-endpoints.txt" 2>&1 || true
 }
 
 wait_for_cluster() {
@@ -1109,9 +1543,9 @@ wait_for_cluster() {
   local endpoint_count="0"
   for _ in $(seq 1 240); do
     snapshot_cluster_status
-    ready_count="$(server_ssh "awk '\$2==\"Ready\"{c++} END{print c+0}' ${ARTIFACT_PREFIX}.nodes-plain 2>/dev/null || echo 0")"
-    control_plane_ready="$(server_ssh "awk '\$2==\"Ready\" && \$3 ~ /control-plane/ {c++} END{print c+0}' ${ARTIFACT_PREFIX}.nodes-plain 2>/dev/null || echo 0")"
-    endpoint_count="$(server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf get endpoints kubernetes -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{\"\\n\"}{end}' 2>/dev/null | awk 'NF{c++} END{print c+0}' || echo 0")"
+    ready_count="$(awk '$2=="Ready"{c++} END{print c+0}' "${ARTIFACT_DIR}/nodes-plain.txt" 2>/dev/null || echo 0)"
+    control_plane_ready="$(awk '$2=="Ready" && $3 ~ /control-plane/ {c++} END{print c+0}' "${ARTIFACT_DIR}/nodes-plain.txt" 2>/dev/null || echo 0)"
+    endpoint_count="$(host_kubectl get endpoints kubernetes -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' 2>/dev/null | awk 'NF{c++} END{print c+0}' || echo 0)"
     if [[ "${ready_count}" -ge "${NODE_COUNT}" && "${control_plane_ready}" -ge "${CONTROL_PLANE_COUNT}" && "${endpoint_count}" -ge "${CONTROL_PLANE_COUNT}" ]]; then
       return 0
     fi
@@ -1125,7 +1559,7 @@ verify_cluster_version() {
     return 0
   fi
   local versions=""
-  versions="$(server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kubeletVersion}{\"\\n\"}{end}'" 2>/dev/null || true)"
+  versions="$(host_kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kubeletVersion}{"\n"}{end}' 2>/dev/null || true)"
   [[ -n "${versions}" ]] || {
     echo "failed to read cluster node versions" >&2
     return 1
@@ -1141,32 +1575,34 @@ verify_cluster_version() {
 }
 
 rebalance_coredns() {
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n kube-system rollout restart deployment coredns >/dev/null 2>&1 || true
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n kube-system rollout status deployment/coredns --timeout=240s" >/dev/null 2>&1 || true
+  host_kubectl -n kube-system rollout restart deployment coredns >/dev/null 2>&1 || true
+  host_kubectl -n kube-system rollout status deployment/coredns --timeout=240s >/dev/null 2>&1 || true
 }
 
 capture_etcd_members() {
+  if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" ]]; then
+    local i=""
+    mkdir -p "${ARTIFACT_DIR}"
+    for i in $(seq 0 "$((CONTROL_PLANE_COUNT - 1))"); do
+      if ssh "${SSH_OPTS[@]}" "root@$(node_ip "${i}")" true >/dev/null 2>&1; then
+        ssh "${SSH_OPTS[@]}" "root@$(node_ip "${i}")" "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt --key=/etc/kubernetes/pki/etcd/healthcheck-client.key member list -w table" >"${ARTIFACT_DIR}/etcd-members.txt" 2>&1 || true
+        ssh "${SSH_OPTS[@]}" "root@$(node_ip "${i}")" "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt --key=/etc/kubernetes/pki/etcd/healthcheck-client.key endpoint status -w table" >"${ARTIFACT_DIR}/etcd-endpoints.txt" 2>&1 || true
+        return 0
+      fi
+    done
+    return
+  fi
+
   local etcd_pod="etcd-$(node_name 0)"
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n kube-system exec ${etcd_pod} -- etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt --key=/etc/kubernetes/pki/etcd/healthcheck-client.key member list -w table > ${ARTIFACT_PREFIX}.etcd-members 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n kube-system exec ${etcd_pod} -- etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt --key=/etc/kubernetes/pki/etcd/healthcheck-client.key endpoint status -w table > ${ARTIFACT_PREFIX}.etcd-endpoints 2>&1" >/dev/null 2>&1 || true
+  mkdir -p "${ARTIFACT_DIR}"
+  host_kubectl -n kube-system exec "${etcd_pod}" -- etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt --key=/etc/kubernetes/pki/etcd/healthcheck-client.key member list -w table >"${ARTIFACT_DIR}/etcd-members.txt" 2>&1 || true
+  host_kubectl -n kube-system exec "${etcd_pod}" -- etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt --key=/etc/kubernetes/pki/etcd/healthcheck-client.key endpoint status -w table >"${ARTIFACT_DIR}/etcd-endpoints.txt" 2>&1 || true
 }
 
 run_smoke() {
-  server_ssh "cat >/root/run-smoke.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${NETWORK_PLUGIN:-}" == "cilium" ]]; then
-  cilium status --wait --wait-duration 10m --interactive=false >/var/log/kubeadm-ha-lab.cilium-status 2>&1
-  if [[ "${CILIUM_CONNECTIVITY_TEST:-0}" == "1" ]]; then
-    connectivity_args=()
-    if [[ "${WORKER_COUNT:-0}" == "0" ]]; then
-      connectivity_args+=(--single-node)
-    fi
-    cilium connectivity test "${connectivity_args[@]}" >/var/log/kubeadm-ha-lab.cilium-connectivity.log 2>&1
-  fi
-fi
-kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace smoke --dry-run=client -o yaml | kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -
-cat <<'YAML' | kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -
+  mkdir -p "${ARTIFACT_DIR}"
+  host_kubectl create namespace smoke --dry-run=client -o yaml | host_kubectl apply -f -
+  cat <<'YAML' | host_kubectl apply -f -
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -1223,10 +1659,10 @@ spec:
     - port: 80
       targetPort: 80
 YAML
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n smoke rollout status daemonset/node-smoke --timeout=240s
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n smoke rollout status deployment/echo --timeout=240s
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n kube-system rollout status deployment/coredns --timeout=240s
-cat <<'YAML' | kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -
+  host_kubectl -n smoke rollout status daemonset/node-smoke --timeout=240s
+  host_kubectl -n smoke rollout status deployment/echo --timeout=240s
+  host_kubectl -n kube-system rollout status deployment/coredns --timeout=240s
+  cat <<'YAML' | host_kubectl apply -f -
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -1254,16 +1690,12 @@ spec:
               done
               exit 1
 YAML
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n smoke wait --for=condition=complete job/dns-http --timeout=240s
-kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o wide > /var/log/kubeadm-ha-lab.nodes 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -A -o wide > /var/log/kubeadm-ha-lab.pods 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf get svc -A -o wide > /var/log/kubeadm-ha-lab.services 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n smoke get pods -o wide > /var/log/kubeadm-ha-lab.smoke-pods 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n smoke get svc echo -o wide > /var/log/kubeadm-ha-lab.smoke-service 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf -n smoke logs job/dns-http > /var/log/kubeadm-ha-lab.smoke-job.log 2>&1
-kubectl --kubeconfig /etc/kubernetes/admin.conf config view --raw > /var/log/kubeadm-ha-lab.kubeconfig 2>&1
-EOF
-  server_ssh "chmod +x /root/run-smoke.sh && NETWORK_PLUGIN=$(printf '%q' "${NETWORK_PLUGIN}") CILIUM_CONNECTIVITY_TEST=$(printf '%q' "${CILIUM_CONNECTIVITY_TEST}") WORKER_COUNT=$(printf '%q' "${WORKER_COUNT}") /root/run-smoke.sh"
+  host_kubectl -n smoke wait --for=condition=complete job/dns-http --timeout=240s
+  snapshot_cluster_status
+  host_kubectl -n smoke get pods -o wide >"${ARTIFACT_DIR}/smoke-pods.txt" 2>&1
+  host_kubectl -n smoke get svc echo -o wide >"${ARTIFACT_DIR}/smoke-service.txt" 2>&1
+  host_kubectl -n smoke logs job/dns-http >"${ARTIFACT_DIR}/smoke-job.log" 2>&1
+  host_kubectl config view --raw >"${ARTIFACT_DIR}/kubeconfig.yaml" 2>&1
 }
 
 install_istio_addon() {
@@ -1274,23 +1706,22 @@ install_istio_addon() {
     echo "ISTIOCTL_BIN is not executable: ${ISTIOCTL_BIN}" >&2
     return 1
   }
-  mkdir -p "${RUN_ROOT}/artifacts"
-  copy_guest_file "${ARTIFACT_PREFIX}.kubeconfig" "${RUN_ROOT}/artifacts/kubeconfig.yaml"
-  [[ -s "${RUN_ROOT}/artifacts/kubeconfig.yaml" ]] || {
-    echo "failed to copy kubeconfig for Istio installation" >&2
+  mkdir -p "${ARTIFACT_DIR}"
+  [[ -s "${HOST_KUBECONFIG_PATH}" ]] || {
+    echo "failed to prepare host kubeconfig for Istio installation" >&2
     return 1
   }
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace istio-system --dry-run=client -o yaml | kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -" >"${RUN_ROOT}/istio-namespace.log" 2>&1
+  host_kubectl create namespace istio-system --dry-run=client -o yaml | host_kubectl apply -f - >"${RUN_ROOT}/istio-namespace.log" 2>&1
   "${ISTIOCTL_BIN}" manifest generate --set "profile=${ISTIO_PROFILE}" --set "hub=registry.istio.io/release" --set "tag=${ISTIO_VERSION}" >"${RUN_ROOT}/istio-manifest.yaml"
-  ssh "${SSH_OPTS[@]}" "root@${PRIMARY_CONTROL_PLANE_IP}" "kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -" <"${RUN_ROOT}/istio-manifest.yaml" >"${RUN_ROOT}/istio-install.log" 2>&1
-  "${ISTIOCTL_BIN}" version --kubeconfig "${RUN_ROOT}/artifacts/kubeconfig.yaml" >"${RUN_ROOT}/artifacts/istioctl-version.txt" 2>&1 || true
+  host_kubectl apply -f "${RUN_ROOT}/istio-manifest.yaml" >"${RUN_ROOT}/istio-install.log" 2>&1
+  "${ISTIOCTL_BIN}" version --kubeconfig "${HOST_KUBECONFIG_PATH}" >"${ARTIFACT_DIR}/istioctl-version.txt" 2>&1 || true
   # This lab is intentionally control-plane only by default. Make Istiod schedulable
   # there and lower its requests so it fits on the small Firecracker nodes.
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n istio-system patch deployment istiod --type=json -p='[{\"op\":\"add\",\"path\":\"/spec/template/spec/tolerations/-\",\"value\":{\"key\":\"node-role.kubernetes.io/control-plane\",\"operator\":\"Exists\",\"effect\":\"NoSchedule\"}},{\"op\":\"add\",\"path\":\"/spec/template/spec/tolerations/-\",\"value\":{\"key\":\"node-role.kubernetes.io/master\",\"operator\":\"Exists\",\"effect\":\"NoSchedule\"}}]'" >"${RUN_ROOT}/istio-tolerations.log" 2>&1
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n istio-system patch deployment istiod --type=strategic -p='{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"discovery\",\"resources\":{\"requests\":{\"cpu\":\"100m\",\"memory\":\"512Mi\"},\"limits\":{\"cpu\":\"500m\",\"memory\":\"1Gi\"}}}]}}}}'" >"${RUN_ROOT}/istio-resources.log" 2>&1
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n istio-system rollout status deployment/istiod --timeout=240s" >"${RUN_ROOT}/istio-rollout.log" 2>&1
-  server_ssh "test \"\$(kubectl --kubeconfig /etc/kubernetes/admin.conf -n istio-system get deployment istiod -o jsonpath='{.status.availableReplicas}')\" = \"1\"" >/dev/null
-  server_ssh "kubectl --kubeconfig /etc/kubernetes/admin.conf -n istio-system get pods -o wide > ${ARTIFACT_PREFIX}.istio-pods 2>&1"
+  host_kubectl -n istio-system patch deployment istiod --type=json -p='[{"op":"add","path":"/spec/template/spec/tolerations/-","value":{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}},{"op":"add","path":"/spec/template/spec/tolerations/-","value":{"key":"node-role.kubernetes.io/master","operator":"Exists","effect":"NoSchedule"}}]' >"${RUN_ROOT}/istio-tolerations.log" 2>&1
+  host_kubectl -n istio-system patch deployment istiod --type=strategic -p='{"spec":{"template":{"spec":{"containers":[{"name":"discovery","resources":{"requests":{"cpu":"100m","memory":"512Mi"},"limits":{"cpu":"500m","memory":"1Gi"}}}]}}}}' >"${RUN_ROOT}/istio-resources.log" 2>&1
+  host_kubectl -n istio-system rollout status deployment/istiod --timeout=240s >"${RUN_ROOT}/istio-rollout.log" 2>&1
+  test "$(host_kubectl -n istio-system get deployment istiod -o jsonpath='{.status.availableReplicas}')" = "1"
+  host_kubectl -n istio-system get pods -o wide >"${ARTIFACT_DIR}/istio-pods.txt" 2>&1
 }
 
 verify_api_lb() {
@@ -1319,36 +1750,50 @@ collect_diagnostics() {
       ssh "${SSH_OPTS[@]}" "root@${ip}" "ip route show" >"${node_artifacts}/ip-route.txt" 2>&1 || true
       ssh "${SSH_OPTS[@]}" "root@${ip}" "journalctl -u containerd -u kubelet --no-pager -n 200 || true" >"${node_artifacts}/services.log" 2>&1 || true
       ssh "${SSH_OPTS[@]}" "root@${ip}" "test -f /etc/kubernetes/admin.conf && kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -A -o wide || true" >"${node_artifacts}/pods.txt" 2>&1 || true
+      if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" && "${i}" -lt "${CONTROL_PLANE_COUNT}" ]]; then
+        ssh "${SSH_OPTS[@]}" "root@${ip}" "systemctl list-units 'k2vm-*-nsjail.service' --no-pager --all || true" >"${node_artifacts}/nsjail-services.txt" 2>&1 || true
+        ssh "${SSH_OPTS[@]}" "root@${ip}" "ps -eo pid,ppid,cmd | grep '[n]sjail' || true" >"${node_artifacts}/nsjail-processes.txt" 2>&1 || true
+        ssh "${SSH_OPTS[@]}" "root@${ip}" "python3 - <<'PY'\nimport pathlib\nimport subprocess\ncomponents = ['etcd', 'kube-apiserver', 'kube-controller-manager', 'kube-scheduler']\nhost_mnt = pathlib.Path('/proc/1/ns/mnt').readlink()\nprint('host_mnt', host_mnt)\nfor comp in components:\n    unit = f'k2vm-{comp}-nsjail.service'\n    pid = subprocess.check_output(['systemctl', 'show', '-p', 'MainPID', '--value', unit], text=True).strip()\n    print(comp, 'pid', pid, 'mnt', pathlib.Path(f'/proc/{pid}/ns/mnt').readlink(), 'pidns', pathlib.Path(f'/proc/{pid}/ns/pid').readlink())\nPY" >"${node_artifacts}/nsjail-namespaces.txt" 2>&1 || true
+        ssh "${SSH_OPTS[@]}" "root@${ip}" "ls -1 /etc/kubernetes/manifests.static-pods 2>/dev/null || true" >"${node_artifacts}/nsjail-manifests.txt" 2>&1 || true
+      fi
     fi
   done
 }
 
 collect_artifacts() {
-  mkdir -p "${RUN_ROOT}/artifacts"
-  copy_guest_file "${ARTIFACT_PREFIX}.nodes" "${RUN_ROOT}/artifacts/nodes.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.pods" "${RUN_ROOT}/artifacts/pods.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.services" "${RUN_ROOT}/artifacts/services.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.apiserver-endpoints" "${RUN_ROOT}/artifacts/apiserver-endpoints.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.etcd-members" "${RUN_ROOT}/artifacts/etcd-members.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.etcd-endpoints" "${RUN_ROOT}/artifacts/etcd-endpoints.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.smoke-pods" "${RUN_ROOT}/artifacts/smoke-pods.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.smoke-service" "${RUN_ROOT}/artifacts/smoke-service.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.smoke-job.log" "${RUN_ROOT}/artifacts/smoke-job.log"
-  copy_guest_file "${ARTIFACT_PREFIX}.cilium-status" "${RUN_ROOT}/artifacts/cilium-status.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.cilium-pods" "${RUN_ROOT}/artifacts/cilium-pods.txt"
-  copy_guest_file "${ARTIFACT_PREFIX}.cilium-connectivity.log" "${RUN_ROOT}/artifacts/cilium-connectivity.log"
-  copy_guest_file "${ARTIFACT_PREFIX}.kubeconfig" "${RUN_ROOT}/artifacts/kubeconfig.yaml"
-  copy_guest_file "${ARTIFACT_PREFIX}.istio-pods" "${RUN_ROOT}/artifacts/istio-pods.txt"
-  [[ -f "${RUN_ROOT}/artifacts/istioctl-version.txt" ]] || true
+  mkdir -p "${ARTIFACT_DIR}"
+  [[ -f "${ARTIFACT_DIR}/nodes.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.nodes" "${ARTIFACT_DIR}/nodes.txt"
+  [[ -f "${ARTIFACT_DIR}/pods.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.pods" "${ARTIFACT_DIR}/pods.txt"
+  [[ -f "${ARTIFACT_DIR}/services.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.services" "${ARTIFACT_DIR}/services.txt"
+  [[ -f "${ARTIFACT_DIR}/apiserver-endpoints.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.apiserver-endpoints" "${ARTIFACT_DIR}/apiserver-endpoints.txt"
+  [[ -f "${ARTIFACT_DIR}/etcd-members.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.etcd-members" "${ARTIFACT_DIR}/etcd-members.txt"
+  [[ -f "${ARTIFACT_DIR}/etcd-endpoints.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.etcd-endpoints" "${ARTIFACT_DIR}/etcd-endpoints.txt"
+  [[ -f "${ARTIFACT_DIR}/smoke-pods.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.smoke-pods" "${ARTIFACT_DIR}/smoke-pods.txt"
+  [[ -f "${ARTIFACT_DIR}/smoke-service.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.smoke-service" "${ARTIFACT_DIR}/smoke-service.txt"
+  [[ -f "${ARTIFACT_DIR}/smoke-job.log" ]] || copy_guest_file "${ARTIFACT_PREFIX}.smoke-job.log" "${ARTIFACT_DIR}/smoke-job.log"
+  [[ -f "${ARTIFACT_DIR}/cilium-status.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.cilium-status" "${ARTIFACT_DIR}/cilium-status.txt"
+  [[ -f "${ARTIFACT_DIR}/cilium-pods.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.cilium-pods" "${ARTIFACT_DIR}/cilium-pods.txt"
+  [[ -f "${ARTIFACT_DIR}/cilium-connectivity.log" ]] || copy_guest_file "${ARTIFACT_PREFIX}.cilium-connectivity.log" "${ARTIFACT_DIR}/cilium-connectivity.log"
+  [[ -f "${ARTIFACT_DIR}/kubeconfig.yaml" ]] || copy_guest_file "${ARTIFACT_PREFIX}.kubeconfig" "${ARTIFACT_DIR}/kubeconfig.yaml"
+  [[ -f "${ARTIFACT_DIR}/istio-pods.txt" ]] || copy_guest_file "${ARTIFACT_PREFIX}.istio-pods" "${ARTIFACT_DIR}/istio-pods.txt"
+  [[ -f "${ARTIFACT_DIR}/istioctl-version.txt" ]] || true
   [[ -f "${RUN_ROOT}/api-lb-version.json" ]] && cp "${RUN_ROOT}/api-lb-version.json" "${RUN_ROOT}/artifacts/api-lb-version.json"
   [[ -f "${RUN_ROOT}/istio-install.log" ]] && cp "${RUN_ROOT}/istio-install.log" "${RUN_ROOT}/artifacts/istio-install.log"
   [[ -f "${RUN_ROOT}/istio-namespace.log" ]] && cp "${RUN_ROOT}/istio-namespace.log" "${RUN_ROOT}/artifacts/istio-namespace.log"
   [[ -f "${RUN_ROOT}/istio-rollout.log" ]] && cp "${RUN_ROOT}/istio-rollout.log" "${RUN_ROOT}/artifacts/istio-rollout.log"
   [[ -f "${RUN_ROOT}/istio-tolerations.log" ]] && cp "${RUN_ROOT}/istio-tolerations.log" "${RUN_ROOT}/artifacts/istio-tolerations.log"
   [[ -f "${RUN_ROOT}/istio-resources.log" ]] && cp "${RUN_ROOT}/istio-resources.log" "${RUN_ROOT}/artifacts/istio-resources.log"
+  if [[ "${CONTROL_PLANE_RUNTIME}" == "nsjail" ]]; then
+    for i in $(seq 0 "$((CONTROL_PLANE_COUNT - 1))"); do
+      local name
+      name="$(node_name "${i}")"
+      [[ -f "${RUN_ROOT}/nsjail-migrate-${name}.log" ]] && cp "${RUN_ROOT}/nsjail-migrate-${name}.log" "${RUN_ROOT}/artifacts/nsjail-migrate-${name}.log"
+      [[ -f "${RUN_ROOT}/nsjail-verify-${name}.log" ]] && cp "${RUN_ROOT}/nsjail-verify-${name}.log" "${RUN_ROOT}/artifacts/nsjail-verify-${name}.log"
+    done
+  fi
   collect_diagnostics
   cat >"${RUN_ROOT}/artifacts/receipt.json" <<EOF
-{"cluster":"kubeadm-firecracker-ha","status":"succeeded","apiLbEndpoint":"${API_LB_ENDPOINT}","primaryControlPlaneIP":"${PRIMARY_CONTROL_PLANE_IP}","cidr":"${CIDR}","controlPlaneCount":${CONTROL_PLANE_COUNT},"workerCount":${WORKER_COUNT},"nodeCount":${NODE_COUNT},"kubernetesMinor":"${KUBERNETES_MINOR}","kubernetesVersion":"${KUBERNETES_VERSION:-latest-${KUBERNETES_MINOR}}","kubernetesPackageSource":"$( if [[ -n "${PACKAGE_REPO_ROOT}" && "${PACKAGE_REPO_MODE}" == "strict" ]]; then printf '%s' 'k8s-release-repo'; elif [[ -n "${PACKAGE_REPO_ROOT}" ]]; then printf '%s' 'k8s-release-repo+pkgs.k8s.io'; else printf '%s' 'pkgs.k8s.io'; fi )","podCIDR":"${POD_CIDR}","serviceCIDR":"${SERVICE_CIDR}","networkPlugin":"${NETWORK_PLUGIN}","ciliumVersion":"${CILIUM_VERSION}","flannelVersion":"${FLANNEL_VERSION:-latest}","flannelManifestURL":"${FLANNEL_MANIFEST_URL}","istioEnabled":$( [[ "${INSTALL_ISTIO}" == "1" ]] && printf '%s' 'true' || printf '%s' 'false' ),"istioProfile":"${ISTIO_PROFILE}","istioVersion":"${ISTIO_VERSION}"}
+{"cluster":"kubeadm-firecracker-ha","status":"succeeded","apiLbEndpoint":"${API_LB_ENDPOINT}","primaryControlPlaneIP":"${PRIMARY_CONTROL_PLANE_IP}","cidr":"${CIDR}","controlPlaneCount":${CONTROL_PLANE_COUNT},"workerCount":${WORKER_COUNT},"nodeCount":${NODE_COUNT},"kubernetesMinor":"${KUBERNETES_MINOR}","kubernetesVersion":"${KUBERNETES_VERSION:-latest-${KUBERNETES_MINOR}}","kubernetesPackageSource":"$( if [[ -n "${PACKAGE_REPO_ROOT}" && "${PACKAGE_REPO_MODE}" == "strict" ]]; then printf '%s' 'k8s-release-repo'; elif [[ -n "${PACKAGE_REPO_ROOT}" ]]; then printf '%s' 'k8s-release-repo+pkgs.k8s.io'; else printf '%s' 'pkgs.k8s.io'; fi )","podCIDR":"${POD_CIDR}","serviceCIDR":"${SERVICE_CIDR}","networkPlugin":"${NETWORK_PLUGIN}","controlPlaneRuntime":"${CONTROL_PLANE_RUNTIME}","guestSelinuxMode":"${GUEST_SELINUX_MODE}","ciliumVersion":"${CILIUM_VERSION}","flannelVersion":"${FLANNEL_VERSION:-latest}","flannelManifestURL":"${FLANNEL_MANIFEST_URL}","istioEnabled":$( [[ "${INSTALL_ISTIO}" == "1" ]] && printf '%s' 'true' || printf '%s' 'false' ),"istioProfile":"${ISTIO_PROFILE}","istioVersion":"${ISTIO_VERSION}"}
 EOF
 }
 
@@ -1406,6 +1851,7 @@ apply_cluster() {
   require_cmd awk
   require_cmd chroot
   require_cmd curl
+  require_cmd dpkg-deb
   require_cmd docker
   require_cmd e2fsck
   require_cmd grep
@@ -1429,6 +1875,8 @@ apply_cluster() {
   APPLY_ACTIVE="1"
   mkdir -p "${RUN_ROOT}" "${CACHE_ROOT}"
   cleanup_run
+  mkdir -p "${ARTIFACT_DIR}"
+  prepare_host_kubectl
   ensure_guest_ssh_key
   download_firecracker_assets || exit 1
   ensure_base_rootfs || exit 1
@@ -1449,6 +1897,8 @@ apply_cluster() {
   init_primary_control_plane
   join_additional_control_planes
   join_workers
+  wait_for_cluster
+  migrate_control_planes_to_nsjail
   rebalance_coredns
   wait_for_cluster
   verify_cluster_version

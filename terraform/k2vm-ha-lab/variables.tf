@@ -144,8 +144,20 @@ variable "base_rootfs_path" {
 
 variable "kernel_params" {
   type        = list(string)
-  default     = ["apparmor=0", "security=selinux", "selinux=1", "enforcing=1", "audit=1"]
-  description = "Additional kernel parameters for the lab guests."
+  default     = []
+  description = "Additional kernel parameters for the lab guests. Leave empty to use the mode-specific defaults."
+}
+
+variable "guest_selinux_mode" {
+  type        = string
+  default     = "enforcing"
+  description = "Guest SELinux mode: disabled, permissive, or enforcing."
+}
+
+variable "control_plane_runtime" {
+  type        = string
+  default     = "static-pods"
+  description = "Control-plane runtime inside the guests: static-pods or nsjail."
 }
 
 variable "vcpu_count" {
@@ -183,4 +195,3 @@ variable "redeploy_token" {
   default     = ""
   description = "Change this value to force Terraform to re-run apply."
 }
-

@@ -35,6 +35,11 @@ locals {
   effective_output_dir = var.output_dir != "" ? abspath(var.output_dir) : abspath("${path.module}/output/${var.name}")
   effective_remote_dir = var.remote_workdir != "" ? var.remote_workdir : "/root/${var.name}"
   manifest_path        = "${path.module}/${var.name}.rendered.json"
+  effective_kernel_params = length(var.kernel_params) > 0 ? var.kernel_params : (
+    var.guest_selinux_mode == "disabled" ? ["apparmor=0", "selinux=0", "audit=0"] :
+    var.guest_selinux_mode == "permissive" ? ["apparmor=0", "security=selinux", "selinux=1", "enforcing=0", "audit=1"] :
+    ["apparmor=0", "security=selinux", "selinux=1", "enforcing=1", "audit=1"]
+  )
 
   manifest = {
     schema_version = "k2vm.spec.v1"
@@ -45,12 +50,13 @@ locals {
       workdir = local.effective_remote_dir
     }
     cluster = {
-      distribution        = "kubeadm"
-      subnet_prefix       = var.subnet_prefix
-      control_plane_count = var.control_plane_count
-      worker_count        = var.worker_count
-      network_plugin      = var.network_plugin
-      kubernetes_version  = var.kubernetes_version
+      distribution          = "kubeadm"
+      subnet_prefix         = var.subnet_prefix
+      control_plane_count   = var.control_plane_count
+      worker_count          = var.worker_count
+      network_plugin        = var.network_plugin
+      kubernetes_version    = var.kubernetes_version
+      control_plane_runtime = var.control_plane_runtime
     }
     firecracker = {
       binary                  = var.firecracker_binary
@@ -61,8 +67,11 @@ locals {
       initrd_path             = var.initrd_path
       kernel_modules_tar_path = var.kernel_modules_tar_path
       base_rootfs_path        = var.base_rootfs_path
-      kernel_params           = var.kernel_params
+      kernel_params           = local.effective_kernel_params
       vcpu_count              = var.vcpu_count
+    }
+    guest = {
+      selinux_mode = var.guest_selinux_mode
     }
     paths = {
       run_root         = var.run_root
@@ -126,6 +135,14 @@ resource "null_resource" "lab" {
     precondition {
       condition     = local.effective_host != ""
       error_message = "Set target_host or define K8S_RELEASE_PROOF_HOST in the repo-local .env file."
+    }
+    precondition {
+      condition     = contains(["disabled", "permissive", "enforcing"], var.guest_selinux_mode)
+      error_message = "guest_selinux_mode must be disabled, permissive, or enforcing."
+    }
+    precondition {
+      condition     = contains(["static-pods", "nsjail"], var.control_plane_runtime)
+      error_message = "control_plane_runtime must be static-pods or nsjail."
     }
     precondition {
       condition     = fileexists("${path.module}/bin/k2vm-kubeadm-engine.sh")
