@@ -732,7 +732,6 @@ EOF
   ln -sf /lib/systemd/system/ssh.service "${mnt}/etc/systemd/system/multi-user.target.wants/ssh.service"
   ln -sf /lib/systemd/system/systemd-networkd.service "${mnt}/etc/systemd/system/multi-user.target.wants/systemd-networkd.service"
 
-  cleanup_mounts
   if [[ -f "${mnt}/etc/selinux/config" ]] && grep -Eq '^SELINUX=(enforcing|permissive)$' "${mnt}/etc/selinux/config"; then
     if ! chroot "${mnt}" /sbin/setfiles -F /etc/selinux/default/contexts/files/file_contexts / >"${CACHE_ROOT}/selinux-relabel-${key}.log" 2>&1; then
       cat "${CACHE_ROOT}/selinux-relabel-${key}.log" >&2
@@ -741,6 +740,7 @@ EOF
     fi
     rm -f "${mnt}/.autorelabel"
   fi
+  cleanup_mounts
   trap - RETURN ERR
   mv "${tmp}" "${prepared}"
   PREPARED_ROOTFS_PATH="${prepared}"
@@ -797,13 +797,21 @@ EOF
 
   rm -f "${mnt}/etc/resolv.conf"
   printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' >"${mnt}/etc/resolv.conf"
-  rm -f "${mnt}/etc/machine-id" "${mnt}/var/lib/dbus/machine-id" 2>/dev/null || true
-  touch "${mnt}/etc/machine-id"
+  rm -f "${mnt}/etc/machine-id" 2>/dev/null || true
+  mkdir -p "${mnt}/var/lib/dbus"
+  ln -sfn /etc/machine-id "${mnt}/var/lib/dbus/machine-id"
+  : >"${mnt}/etc/machine-id"
   rm -rf "${mnt}/etc/kubernetes" "${mnt}/var/lib/etcd" "${mnt}/var/lib/cni" "${mnt}/var/lib/kubelet" "${mnt}/var/lib/containerd" "${mnt}/etc/cni/net.d"
   mkdir -p "${mnt}/var/lib/containerd" "${mnt}/etc/cni/net.d"
   touch "${mnt}/etc/cloud/cloud-init.disabled" 2>/dev/null || true
   ln -sf /lib/systemd/system/ssh.service "${mnt}/etc/systemd/system/multi-user.target.wants/ssh.service"
   ln -sf /lib/systemd/system/systemd-networkd.service "${mnt}/etc/systemd/system/multi-user.target.wants/systemd-networkd.service"
+  if [[ -f "${mnt}/etc/selinux/config" ]] && grep -Eq '^SELINUX=(enforcing|permissive)$' "${mnt}/etc/selinux/config"; then
+    if ! chroot "${mnt}" /sbin/setfiles -F /etc/selinux/default/contexts/files/file_contexts /etc /var /root >"${vm_dir}/selinux-relabel.log" 2>&1; then
+      cat "${vm_dir}/selinux-relabel.log" >&2
+      return 1
+    fi
+  fi
 
   cleanup_vm_mount
   trap - RETURN

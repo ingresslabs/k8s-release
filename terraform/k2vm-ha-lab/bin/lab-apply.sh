@@ -12,7 +12,7 @@ require_cmd() {
   }
 }
 
-for cmd in jq gh ssh scp unzip dpkg-scanpackages gzip find mktemp; do
+for cmd in jq gh ssh scp unzip find mktemp; do
   require_cmd "${cmd}"
 done
 
@@ -66,7 +66,10 @@ else
   exit 1
 fi
 
-mapfile -t components < <(jq -r '.release.package_repository.artifact_components[]' "${manifest_path}")
+components=()
+while IFS= read -r component; do
+  components+=("${component}")
+done < <(jq -r '.release.package_repository.artifact_components[]' "${manifest_path}")
 for component in "${components[@]}"; do
   suffix="-${component}-packages"
   artifact_id="$(
@@ -99,15 +102,10 @@ for component in "${components[@]}"; do
   fi
 done
 
-(
-  cd "${package_repo_dir}/debian"
-  dpkg-scanpackages . /dev/null > Packages
-  gzip -9c Packages > Packages.gz
-)
-
 ssh "${target}" "rm -rf $(printf '%q' "${remote_workdir}") && mkdir -p $(printf '%q' "${remote_bundle}/release-inputs")"
 scp "${engine_path}" "${target}:${remote_bundle}/"
 scp -r "${package_repo_dir}" "${target}:${remote_bundle}/release-inputs/package-repositories"
+ssh "${target}" "cd $(printf '%q' "${remote_bundle}/release-inputs/package-repositories/debian") && dpkg-scanpackages . /dev/null > Packages && gzip -9c Packages > Packages.gz"
 
 fetch_artifacts() {
   scp -r "${target}:${run_root}/artifacts" "${output_dir}/" >/dev/null 2>&1 || true

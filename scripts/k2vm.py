@@ -172,7 +172,6 @@ fi"""
         '  PREPARED_ROOTFS_PATH="${prepared}"'
     )
     prepared_rootfs_replacement = (
-        '  cleanup_mounts\n'
         '  if [[ -f "${mnt}/etc/selinux/config" ]] && grep -Eq \'^SELINUX=(enforcing|permissive)$\' "${mnt}/etc/selinux/config"; then\n'
         '    if ! chroot "${mnt}" /sbin/setfiles -F /etc/selinux/default/contexts/files/file_contexts / >"${CACHE_ROOT}/selinux-relabel-${key}.log" 2>&1; then\n'
         '      cat "${CACHE_ROOT}/selinux-relabel-${key}.log" >&2\n'
@@ -181,6 +180,7 @@ fi"""
         '    fi\n'
         '    rm -f "${mnt}/.autorelabel"\n'
         '  fi\n'
+        '  cleanup_mounts\n'
         '  trap - RETURN ERR\n'
         '  mv "${tmp}" "${prepared}"\n'
         '  PREPARED_ROOTFS_PATH="${prepared}"'
@@ -188,6 +188,47 @@ fi"""
     if prepared_rootfs_block not in text:
         raise RuntimeError("failed to locate prepared rootfs finalize block in embedded kubeadm engine")
     text = text.replace(prepared_rootfs_block, prepared_rootfs_replacement, 1)
+    machine_id_block = (
+        '  rm -f "${mnt}/etc/machine-id" "${mnt}/var/lib/dbus/machine-id" 2>/dev/null || true\n'
+        '  touch "${mnt}/etc/machine-id"\n'
+    )
+    machine_id_replacement = (
+        '  rm -f "${mnt}/etc/machine-id" 2>/dev/null || true\n'
+        '  mkdir -p "${mnt}/var/lib/dbus"\n'
+        '  ln -sfn /etc/machine-id "${mnt}/var/lib/dbus/machine-id"\n'
+        '  : >"${mnt}/etc/machine-id"\n'
+    )
+    if machine_id_block not in text:
+        raise RuntimeError("failed to locate machine-id reset block in embedded kubeadm engine")
+    text = text.replace(machine_id_block, machine_id_replacement, 1)
+    configure_vm_block = (
+        '  touch "${mnt}/etc/cloud/cloud-init.disabled" 2>/dev/null || true\n'
+        '  ln -sf /lib/systemd/system/ssh.service "${mnt}/etc/systemd/system/multi-user.target.wants/ssh.service"\n'
+        '  ln -sf /lib/systemd/system/systemd-networkd.service "${mnt}/etc/systemd/system/multi-user.target.wants/systemd-networkd.service"\n'
+        '\n'
+        '  cleanup_vm_mount\n'
+        '  trap - RETURN\n'
+        '}'
+    )
+    configure_vm_replacement = (
+        '  touch "${mnt}/etc/cloud/cloud-init.disabled" 2>/dev/null || true\n'
+        '  ln -sf /lib/systemd/system/ssh.service "${mnt}/etc/systemd/system/multi-user.target.wants/ssh.service"\n'
+        '  ln -sf /lib/systemd/system/systemd-networkd.service "${mnt}/etc/systemd/system/multi-user.target.wants/systemd-networkd.service"\n'
+        '\n'
+        '  if [[ -f "${mnt}/etc/selinux/config" ]] && grep -Eq \'^SELINUX=(enforcing|permissive)$\' "${mnt}/etc/selinux/config"; then\n'
+        '    if ! chroot "${mnt}" /sbin/setfiles -F /etc/selinux/default/contexts/files/file_contexts /etc /var /root >"${vm_dir}/selinux-relabel.log" 2>&1; then\n'
+        '      cat "${vm_dir}/selinux-relabel.log" >&2\n'
+        '      return 1\n'
+        '    fi\n'
+        '  fi\n'
+        '\n'
+        '  cleanup_vm_mount\n'
+        '  trap - RETURN\n'
+        '}'
+    )
+    if configure_vm_block not in text:
+        raise RuntimeError("failed to locate configure_vm finalize block in embedded kubeadm engine")
+    text = text.replace(configure_vm_block, configure_vm_replacement, 1)
     vm_json_block = """  cat >"${vm_dir}/vm.json" <<EOF
 {"boot-source":{"kernel_image_path":"${KERNEL_PATH}","boot_args":"${KERNEL_BOOT_ARGS}"},"drives":[{"drive_id":"rootfs","path_on_host":"${vm_dir}/rootfs.ext4","is_root_device":true,"is_read_only":false}],"machine-config":{"vcpu_count":${VCPU_COUNT},"mem_size_mib":${mem}},"network-interfaces":[{"iface_id":"eth0","host_dev_name":"${tap}","guest_mac":"${mac}"}],"logger":{"log_path":"${vm_dir}/firecracker.log","level":"Info","show_level":true,"show_log_origin":true}}
 EOF"""
