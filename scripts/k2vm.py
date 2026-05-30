@@ -133,6 +133,7 @@ def render_embedded_kubeadm_engine_text() -> str:
     text = gzip.decompress(base64.b64decode(EMBEDDED_KUBEADM_ENGINE_GZ_B64)).decode("utf-8")
     kernel_block = 'LINUXKIT_KERNEL_IMAGE="${LINUXKIT_KERNEL_IMAGE:-linuxkit/kernel:6.12.59}"'
     kernel_block_replacement = f"""LINUXKIT_KERNEL_IMAGE="${{LINUXKIT_KERNEL_IMAGE:-linuxkit/kernel:6.12.59}}"
+INITRD_PATH="${{INITRD_PATH:-}}"
 DEFAULT_KERNEL_BOOT_ARGS="${{DEFAULT_KERNEL_BOOT_ARGS:-{DEFAULT_KERNEL_BOOT_ARGS}}}"
 KERNEL_BOOT_ARGS="${{KERNEL_BOOT_ARGS:-${{DEFAULT_KERNEL_BOOT_ARGS}}}}"
 KERNEL_BOOT_ARGS_EXTRA="${{KERNEL_BOOT_ARGS_EXTRA:-}}"
@@ -149,7 +150,59 @@ fi"""
     )
     if boot_args not in text:
         raise RuntimeError("failed to locate Firecracker boot args in embedded kubeadm engine")
-    return text.replace(boot_args, '"boot_args":"${KERNEL_BOOT_ARGS}"', 1)
+    text = text.replace(boot_args, '"boot_args":"${KERNEL_BOOT_ARGS}"', 1)
+    containerd_selinux_line = "  sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' \"${mnt}/etc/containerd/config.toml\""
+    containerd_selinux_replacement = """  sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' "${mnt}/etc/containerd/config.toml"
+  sed -i 's/enable_selinux = false/enable_selinux = true/' "${mnt}/etc/containerd/config.toml" || true"""
+    if containerd_selinux_line not in text:
+        raise RuntimeError("failed to locate containerd SystemdCgroup config in embedded kubeadm engine")
+    text = text.replace(containerd_selinux_line, containerd_selinux_replacement, 1)
+    cni_archive_line = '  local cni_archive="${CACHE_ROOT}/downloads/cni-plugins-linux-${cni_arch_value}-${CNI_PLUGINS_VERSION}.tgz"'
+    cni_archive_replacement = (
+        '  mkdir -p "${CACHE_ROOT}/downloads"\n'
+        '  local cni_archive="${CACHE_ROOT}/downloads/cni-plugins-linux-${cni_arch_value}-${CNI_PLUGINS_VERSION}.tgz"'
+    )
+    if cni_archive_line not in text:
+        raise RuntimeError("failed to locate CNI archive cache path in embedded kubeadm engine")
+    text = text.replace(cni_archive_line, cni_archive_replacement, 1)
+    prepared_rootfs_block = (
+        '  cleanup_mounts\n'
+        '  trap - RETURN ERR\n'
+        '  mv "${tmp}" "${prepared}"\n'
+        '  PREPARED_ROOTFS_PATH="${prepared}"'
+    )
+    prepared_rootfs_replacement = (
+        '  cleanup_mounts\n'
+        '  if [[ -f "${mnt}/etc/selinux/config" ]] && grep -Eq \'^SELINUX=(enforcing|permissive)$\' "${mnt}/etc/selinux/config"; then\n'
+        '    if ! chroot "${mnt}" /sbin/setfiles -F /etc/selinux/default/contexts/files/file_contexts / >"${CACHE_ROOT}/selinux-relabel-${key}.log" 2>&1; then\n'
+        '      cat "${CACHE_ROOT}/selinux-relabel-${key}.log" >&2\n'
+        '      prepare_failed="1"\n'
+        '      return 1\n'
+        '    fi\n'
+        '    rm -f "${mnt}/.autorelabel"\n'
+        '  fi\n'
+        '  trap - RETURN ERR\n'
+        '  mv "${tmp}" "${prepared}"\n'
+        '  PREPARED_ROOTFS_PATH="${prepared}"'
+    )
+    if prepared_rootfs_block not in text:
+        raise RuntimeError("failed to locate prepared rootfs finalize block in embedded kubeadm engine")
+    text = text.replace(prepared_rootfs_block, prepared_rootfs_replacement, 1)
+    vm_json_block = """  cat >"${vm_dir}/vm.json" <<EOF
+{"boot-source":{"kernel_image_path":"${KERNEL_PATH}","boot_args":"${KERNEL_BOOT_ARGS}"},"drives":[{"drive_id":"rootfs","path_on_host":"${vm_dir}/rootfs.ext4","is_root_device":true,"is_read_only":false}],"machine-config":{"vcpu_count":${VCPU_COUNT},"mem_size_mib":${mem}},"network-interfaces":[{"iface_id":"eth0","host_dev_name":"${tap}","guest_mac":"${mac}"}],"logger":{"log_path":"${vm_dir}/firecracker.log","level":"Info","show_level":true,"show_log_origin":true}}
+EOF"""
+    vm_json_replacement = """  if [[ -n "${INITRD_PATH}" ]]; then
+    cat >"${vm_dir}/vm.json" <<EOF
+{"boot-source":{"kernel_image_path":"${KERNEL_PATH}","initrd_path":"${INITRD_PATH}","boot_args":"${KERNEL_BOOT_ARGS}"},"drives":[{"drive_id":"rootfs","path_on_host":"${vm_dir}/rootfs.ext4","is_root_device":true,"is_read_only":false}],"machine-config":{"vcpu_count":${VCPU_COUNT},"mem_size_mib":${mem}},"network-interfaces":[{"iface_id":"eth0","host_dev_name":"${tap}","guest_mac":"${mac}"}],"logger":{"log_path":"${vm_dir}/firecracker.log","level":"Info","show_level":true,"show_log_origin":true}}
+EOF
+  else
+    cat >"${vm_dir}/vm.json" <<EOF
+{"boot-source":{"kernel_image_path":"${KERNEL_PATH}","boot_args":"${KERNEL_BOOT_ARGS}"},"drives":[{"drive_id":"rootfs","path_on_host":"${vm_dir}/rootfs.ext4","is_root_device":true,"is_read_only":false}],"machine-config":{"vcpu_count":${VCPU_COUNT},"mem_size_mib":${mem}},"network-interfaces":[{"iface_id":"eth0","host_dev_name":"${tap}","guest_mac":"${mac}"}],"logger":{"log_path":"${vm_dir}/firecracker.log","level":"Info","show_level":true,"show_log_origin":true}}
+EOF
+  fi"""
+    if vm_json_block not in text:
+        raise RuntimeError("failed to locate Firecracker vm.json generation block in embedded kubeadm engine")
+    return text.replace(vm_json_block, vm_json_replacement, 1)
 
 
 def materialize_embedded_kubeadm_engine(output_dir: Path) -> Path:
@@ -219,6 +272,7 @@ def normalize_spec(spec: dict[str, Any], output_dir: Path) -> dict[str, Any]:
     fc.setdefault("tap_prefix", "k2vm198")
     fc.setdefault("vcpu_count", 2)
     fc.setdefault("kernel_boot_args", "")
+    fc.setdefault("initrd_path", "")
     if "kernel_source" not in fc:
         fc["kernel_source"] = "provided" if distro == "k3s" else "linuxkit"
     kernel_source = str(fc["kernel_source"]).strip().lower()
@@ -823,6 +877,8 @@ def remote_env(spec: dict[str, Any], engine_path: str, mode: str) -> dict[str, s
             env["PACKAGE_REPO_TRUSTED"] = "1" if deep_get(spec, "release.staged_package_repository_trusted", False) else "0"
         if fc.get("kernel_path"):
             env["KERNEL_PATH"] = fc["kernel_path"]
+        if fc.get("initrd_path"):
+            env["INITRD_PATH"] = fc["initrd_path"]
         if fc.get("kernel_modules_tar_path"):
             env["KERNEL_MODULES_TAR_PATH"] = fc["kernel_modules_tar_path"]
         if fc.get("base_rootfs_path"):
@@ -1007,6 +1063,9 @@ def validate_spec(spec: dict[str, Any]) -> None:
     kernel_path = deep_get(spec, "firecracker.kernel_path", "")
     if kernel_path and not isinstance(kernel_path, str):
         raise ValueError("firecracker.kernel_path must be a string")
+    initrd_path = deep_get(spec, "firecracker.initrd_path", "")
+    if initrd_path and not isinstance(initrd_path, str):
+        raise ValueError("firecracker.initrd_path must be a string")
     kernel_params = deep_get(spec, "firecracker.kernel_params", [])
     if not isinstance(kernel_params, list) or not all(isinstance(item, str) and item for item in kernel_params):
         raise ValueError("firecracker.kernel_params must be an array of non-empty strings")

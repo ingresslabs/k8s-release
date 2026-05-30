@@ -173,6 +173,17 @@ cython_debug/
 output/
 continuous-improvement-report.md
 
+# Terraform wrapper artifacts
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+terraform/**/output/
+terraform/**/.stage/
+terraform/**/*.rendered.json
+terraform/**/terraform.tfvars
+terraform/**/terraform.tfvars.json
+
 # Local AI/agent workspace files, specs, prompts, and rules
 AGENTS.md
 AGENT.md
