@@ -226,7 +226,7 @@ contains_gate "Release passport contract" "release passport" README.md docs/worl
 contains_gate "L4 headline" "Current target: L4" docs/world-class-release-spec.md
 contains_gate "Project starts at 1.0.0" "1\\.0\\.0" VERSION package.json docs/release-policy.md README.md
 contains_gate "Major-change release bumping" "bump-major" Makefile docs/release-policy.md scripts/bump-project-version.sh
-contains_gate "Merge tested work before branch cleanup" "tested work must be merged into.*main" docs/release-policy.md
+contains_gate "Devel-first branch flow" 'committed and tested on.*devel|Merge `devel` into `main` only after' docs/release-policy.md
 
 if command -v gh >/dev/null 2>&1 && [ -n "${repo}" ] && [ -n "${branch}" ]; then
     latest_run=$(gh run list \
