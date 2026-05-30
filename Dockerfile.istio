@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG GO_IMAGE=golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19
+ARG GO_IMAGE=golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
 ARG RUNTIME_IMAGE=debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 ARG DEBIAN_SNAPSHOT=20260401T000000Z
 
@@ -15,13 +15,11 @@ RUN set -eux; \
     printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
     printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
 
-# Define ARG for Kubernetes version
-ARG KUBE_VERSION
-ARG KUBE_GIT_URL
+ARG ISTIO_VERSION
+ARG ISTIO_GIT_URL
 
-# Set the environment variable using the ARG
-ENV KUBE_VERSION=${KUBE_VERSION}
-ENV KUBE_GIT_URL=${KUBE_GIT_URL}
+ENV ISTIO_VERSION=${ISTIO_VERSION}
+ENV ISTIO_GIT_URL=${ISTIO_GIT_URL}
 
 ENV GO111MODULE=on
 ENV GOFLAGS="-trimpath -buildvcs=false"
@@ -29,21 +27,25 @@ ENV GOPATH=/go
 ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 
 RUN apt-get update && apt-get install -y \
-    make \
-    gcc \
     git \
     bash \
     rsync \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone ${KUBE_GIT_URL} /kubernetes && \
-    cd /kubernetes && \
-    git checkout ${KUBE_VERSION}
+RUN git clone ${ISTIO_GIT_URL} /istio && \
+    cd /istio && \
+    git checkout ${ISTIO_VERSION}
 
-WORKDIR /kubernetes
-RUN make WHAT=cmd/kube-controller-manager
+WORKDIR /istio
+RUN mkdir -p /istio/out && \
+    GOOS=linux \
+    GOARCH=amd64 \
+    LDFLAGS='-extldflags -static -s -w' \
+    GOBUILDFLAGS='-tags=vtprotobuf,disable_pgv' \
+    common/scripts/gobuild.sh /istio/out/istioctl ./istioctl/cmd/istioctl
 
-RUN ls -l /kubernetes/_output/bin/
+RUN ls -l /istio/out/
 
 FROM ${RUNTIME_IMAGE}
 ARG DEBIAN_SNAPSHOT
@@ -57,47 +59,34 @@ RUN set -eux; \
     printf "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} ${VERSION_CODENAME}-security main\n" >> /etc/apt/sources.list; \
     printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99snapshot
 
-# Define ARG again for the second stage
-ARG KUBE_VERSION
-
-# Set the environment variable in the second stage
-ENV KUBE_VERSION=${KUBE_VERSION}
+ARG ISTIO_VERSION
+ENV ISTIO_VERSION=${ISTIO_VERSION}
 
 RUN apt-get update && apt-get install -y \
-    bash \
     dpkg \
     dpkg-dev \
     rpm \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /kubernetes/_output/bin/kube-controller-manager /usr/local/bin/kube-controller-manager
+COPY --from=builder /istio/out/istioctl /usr/local/bin/istioctl
 COPY package-builder.sh /usr/local/bin/package-builder.sh
 
-# Create directories for systemd units
 RUN mkdir -p /systemd-units /config-files
 
-# Copy systemd unit files
-COPY systemd-units/kube-controller-manager.service /systemd-units/
-
 RUN chmod +x /usr/local/bin/package-builder.sh
-
-# Create output directory first with proper permissions
 RUN mkdir -p /output && chmod 777 /output
 
-# Create package based on PACKAGE_TYPE
 ENV PACKAGE_TYPE=${PACKAGE_TYPE:-deb}
-RUN /usr/local/bin/package-builder.sh kube-controller-manager "${KUBE_VERSION}" "Kubernetes Controller Manager" && \
+RUN /usr/local/bin/package-builder.sh istioctl "${ISTIO_VERSION}" "Istio Command Line Utility" && \
     ls -la /output
 
-# Make sure the output directory has the right permissions
 RUN chmod -R 777 /output
 
 VOLUME ["/output"]
 
-# Copy the packages to a more accessible location
 RUN cp /output/*.deb / || true
 
-ENTRYPOINT ["kube-controller-manager"]
+ENTRYPOINT ["istioctl"]
 
-CMD ["--help"]
+CMD ["version", "--remote=false"]

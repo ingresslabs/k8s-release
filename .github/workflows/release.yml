@@ -36,6 +36,7 @@ jobs:
           - kubectl
           - flannel
           - calico
+          - istio
           - certificates
         package_type: [deb, rpm]
 

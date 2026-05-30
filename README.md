@@ -1,57 +1,29 @@
 # K8s Release
 
-K8s Release builds verifiable DEB and RPM packages for Kubernetes, etcd,
-Flannel, Calico, and certificates. It is aimed at private, regulated, and
-air-gapped environments where operators need more than binaries: they need
-reproducible outputs, signed repositories, and evidence that the packages can
-be installed and checked later.
+K8s Release builds reproducible DEB and RPM packages for Kubernetes, etcd,
+Flannel, Calico, Istio (`istioctl`), and certificates. It also creates signed
+apt and yum repositories, SBOMs, checksums, release evidence, and offline
+airgap bundles.
 
-For each supported version, the project can produce:
+Use it when you need controlled Kubernetes package delivery for private,
+regulated, or disconnected environments.
 
-- DEB and RPM packages
-- Signed apt and yum repositories
-- Checksums and release manifests
-- SPDX SBOMs and Sigstore bundles
-- Release evidence and a release passport
-- An offline airgap bundle
-
-Basic usage:
+Common commands:
 
 ```bash
 make build PACKAGE_TYPE=all
+./k8s-release build v1.36.1 --component kubelet --format deb,rpm
+./k8s-release build 1.30.0 --component istio --format deb,rpm
+./k8s-release verify-release v1.36.1 --repo OWNER/REPO
+./k8s-release bundle v1.36.1 --airgap
+./k8s-release verify-bundle k8s-v1.36.1-airgap.tar
+./k8s-release passport v1.36.1
 ```
 
-Build one component:
+Key files:
 
-```bash
-./k8s-release build v1.32.2 --component kubelet --format deb,rpm
-```
-
-Verify a release:
-
-```bash
-./k8s-release verify-release v1.32.2 --repo kubekattle/k8s-release
-```
-
-Create and verify an airgap bundle:
-
-```bash
-./k8s-release bundle v1.32.2 --airgap
-./k8s-release verify-bundle k8s-v1.32.2-airgap.tar
-```
-
-Generate a release passport:
-
-```bash
-./k8s-release passport v1.32.2
-```
-
-Project metadata:
-
-Version: `1.0.0`
-
-Spec: `docs/world-class-release-spec.md`
-
-Release policy: `docs/release-policy.md`
+- `docs/world-class-release-spec.md`
+- `docs/release-policy.md`
+- `VERSION`
 
 License: GPL-3.0

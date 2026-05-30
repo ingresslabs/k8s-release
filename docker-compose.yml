@@ -27,8 +27,8 @@ services:
       dockerfile: Dockerfile.kube-proxy
       args:
         KUBE_GIT_URL: "${KUBE_GIT_URL:-https://github.com/kubernetes/kubernetes.git}"
-        KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
-        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        KUBE_VERSION: "${KUBE_VERSION:-v1.36.1}"
+        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -43,8 +43,8 @@ services:
       dockerfile: Dockerfile.kubelet
       args:
         KUBE_GIT_URL: "${KUBE_GIT_URL:-https://github.com/kubernetes/kubernetes.git}"
-        KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
-        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        KUBE_VERSION: "${KUBE_VERSION:-v1.36.1}"
+        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -58,8 +58,8 @@ services:
       context: .
       dockerfile: Dockerfile.etcd
       args:
-        ETCD_VERSION: "${ETCD_VERSION:-v3.5.9}"
-        GO_IMAGE: "${ETCD_GO_IMAGE:-golang:1.20-bookworm@sha256:9fa9101141c01e9440216d32eb2b380b3c3079bea07aeab3546020cc91b3662c}"
+        ETCD_VERSION: "${ETCD_VERSION:-v3.6.11}"
+        GO_IMAGE: "${ETCD_GO_IMAGE:-golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -74,8 +74,8 @@ services:
       dockerfile: Dockerfile.kube-scheduler
       args:
         KUBE_GIT_URL: "${KUBE_GIT_URL:-https://github.com/kubernetes/kubernetes.git}"
-        KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
-        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        KUBE_VERSION: "${KUBE_VERSION:-v1.36.1}"
+        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -90,8 +90,8 @@ services:
       dockerfile: Dockerfile.kube-controller-manager
       args:
         KUBE_GIT_URL: "${KUBE_GIT_URL:-https://github.com/kubernetes/kubernetes.git}"
-        KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
-        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        KUBE_VERSION: "${KUBE_VERSION:-v1.36.1}"
+        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -106,8 +106,8 @@ services:
       dockerfile: Dockerfile.kube-apiserver
       args:
         KUBE_GIT_URL: "${KUBE_GIT_URL:-https://github.com/kubernetes/kubernetes.git}"
-        KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
-        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        KUBE_VERSION: "${KUBE_VERSION:-v1.36.1}"
+        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -122,8 +122,8 @@ services:
       dockerfile: Dockerfile.kubectl
       args:
         KUBE_GIT_URL: "${KUBE_GIT_URL:-https://github.com/kubernetes/kubernetes.git}"
-        KUBE_VERSION: "${KUBE_VERSION:-v1.32.2}"
-        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        KUBE_VERSION: "${KUBE_VERSION:-v1.36.1}"
+        GO_IMAGE: "${KUBE_GO_IMAGE:-golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -137,9 +137,9 @@ services:
       context: .
       dockerfile: Dockerfile.flannel
       args:
-        FLANNEL_VERSION: "${FLANNEL_VERSION:-v0.26.4}"
+        FLANNEL_VERSION: "${FLANNEL_VERSION:-v0.28.4}"
         FLANNEL_GIT_URL: "${FLANNEL_GIT_URL:-https://github.com/flannel-io/flannel.git}"
-        GO_IMAGE: "${FLANNEL_GO_IMAGE:-golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72}"
+        GO_IMAGE: "${FLANNEL_GO_IMAGE:-golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
@@ -153,13 +153,29 @@ services:
       context: .
       dockerfile: Dockerfile.calico
       args:
-        CALICO_VERSION: "${CALICO_VERSION:-v3.28.0}"
+        CALICO_VERSION: "${CALICO_VERSION:-v3.32.0}"
         CALICO_GIT_URL: "${CALICO_GIT_URL:-https://github.com/projectcalico/calico.git}"
-        GO_IMAGE: "${CALICO_GO_IMAGE:-golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253}"
+        GO_IMAGE: "${CALICO_GO_IMAGE:-golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3}"
         RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
         DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
         SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
     environment: *package-environment
     entrypoint: ["sh", "-c", "cp /usr/local/bin/calico-node /output/calico-node && cp /usr/local/bin/calico-felix /output/calico-felix && cp /usr/local/bin/calico /output/calico && cp /usr/local/bin/calico-ipam /output/calico-ipam && cp /usr/local/bin/calico-kube-controllers /output/calico-kube-controllers && /usr/local/bin/package-builder.sh calico-node \"$${CALICO_VERSION}\" \"Calico Node Agent\" && /usr/local/bin/package-builder.sh calico-felix \"$${CALICO_VERSION}\" \"Calico Felix Agent\" && /usr/local/bin/package-builder.sh calico \"$${CALICO_VERSION}\" \"Calico CNI Plugin\" && /usr/local/bin/package-builder.sh calico-ipam \"$${CALICO_VERSION}\" \"Calico IPAM Plugin\" && /usr/local/bin/package-builder.sh calico-kube-controllers \"$${CALICO_VERSION}\" \"Calico Kubernetes Controllers\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
+    volumes:
+      - ./output:/output
+
+  istio-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.istio
+      args:
+        ISTIO_VERSION: "${ISTIO_VERSION:-1.30.0}"
+        ISTIO_GIT_URL: "${ISTIO_GIT_URL:-https://github.com/istio/istio.git}"
+        GO_IMAGE: "${ISTIO_GO_IMAGE:-golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3}"
+        RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252}"
+        DEBIAN_SNAPSHOT: "${DEBIAN_SNAPSHOT:-20260401T000000Z}"
+        SOURCE_DATE_EPOCH: "${SOURCE_DATE_EPOCH:-0}"
+    environment: *package-environment
+    entrypoint: ["sh", "-c", "cp /usr/local/bin/istioctl /output/istioctl && /usr/local/bin/package-builder.sh istioctl \"$${ISTIO_VERSION}\" \"Istio Command Line Utility\" && find / -type f \\( -name '*.deb' -o -name '*.rpm' \\) -exec cp {} /output/ \\; && ls -la /output/"]
     volumes:
       - ./output:/output

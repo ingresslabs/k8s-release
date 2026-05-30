@@ -22,7 +22,7 @@ Options:
   --previous-bundle FILE      Previous airgap bundle; used if previous dirs are absent
 
 Example:
-  k8s-release prove v1.32.2 --previous v1.32.1
+  k8s-release prove v1.36.1 --previous v1.36.0
 EOF
 }
 

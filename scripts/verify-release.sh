@@ -14,9 +14,9 @@ Verifies a release asset set by checking:
   - source ref, source commit, and GitHub Actions workflow identity
 
 Examples:
-  k8s-release verify-release v1.32.2
-  k8s-release verify-release v1.32.2 --repo kubekattle/k8s-release
-  k8s-release verify-release v1.32.2 --dir release-artifacts
+  k8s-release verify-release v1.36.1
+  k8s-release verify-release v1.36.1 --repo kubekattle/k8s-release
+  k8s-release verify-release v1.36.1 --dir release-artifacts
 EOF
 }
 

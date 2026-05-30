@@ -189,7 +189,8 @@ build_component() {
     local etcd_version=$3
     local flannel_version=$4
     local calico_version=$5
-    local package_type=$6
+    local istio_version=$6
+    local package_type=$7
 
     case "${component}" in
         kube-proxy|kubelet|kube-scheduler|kube-controller-manager|kube-apiserver|kubectl)
@@ -203,6 +204,9 @@ build_component() {
             ;;
         calico)
             CALICO_VERSION="${calico_version}" PACKAGE_TYPE="${package_type}" make build-calico
+            ;;
+        istio)
+            ISTIO_VERSION="${istio_version}" PACKAGE_TYPE="${package_type}" make build-istio
             ;;
         certificates)
             CERT_VERSION="${kube_version#v}" PACKAGE_TYPE="${package_type}" make build-certificates
@@ -219,10 +223,11 @@ assemble_set() {
     local etcd_version=$3
     local flannel_version=$4
     local calico_version=$5
-    local package_type=$6
-    local artifact_dir=$7
-    local repo_dir=$8
-    local bundle=$9
+    local istio_version=$6
+    local package_type=$7
+    local artifact_dir=$8
+    local repo_dir=$9
+    local bundle=${10}
     local package_pattern
 
     [ -d output ] || fail "output directory not found after build"
@@ -259,6 +264,7 @@ assemble_set() {
     ETCD_VERSION="${etcd_version}" \
     FLANNEL_VERSION="${flannel_version}" \
     CALICO_VERSION="${calico_version}" \
+    ISTIO_VERSION="${istio_version}" \
         ./scripts/generate-release-evidence.sh "${artifact_dir}" "${repo_dir}" "${artifact_dir}/release-evidence.md"
     cp "${repo_dir}/repo-signing-key.asc" "${artifact_dir}/repo-signing-key.asc"
     ./scripts/generate-release-passport.sh "${kube_version}" \
@@ -283,10 +289,11 @@ for index in $(seq 0 "$((set_count - 1))"); do
     fi
 
     safe=$(safe_label "${label}")
-    kube_version=$(jq -r ".sets[${index}].kube_version // .defaults.kube_version // \"v1.32.2\"" "${config_file}")
-    etcd_version=$(jq -r ".sets[${index}].etcd_version // .defaults.etcd_version // \"v3.5.9\"" "${config_file}")
-    flannel_version=$(jq -r ".sets[${index}].flannel_version // .defaults.flannel_version // \"v0.26.4\"" "${config_file}")
-    calico_version=$(jq -r ".sets[${index}].calico_version // .defaults.calico_version // \"v3.28.0\"" "${config_file}")
+    kube_version=$(jq -r ".sets[${index}].kube_version // .defaults.kube_version // \"v1.36.1\"" "${config_file}")
+    etcd_version=$(jq -r ".sets[${index}].etcd_version // .defaults.etcd_version // \"v3.6.11\"" "${config_file}")
+    flannel_version=$(jq -r ".sets[${index}].flannel_version // .defaults.flannel_version // \"v0.28.4\"" "${config_file}")
+    calico_version=$(jq -r ".sets[${index}].calico_version // .defaults.calico_version // \"v3.32.0\"" "${config_file}")
+    istio_version=$(jq -r ".sets[${index}].istio_version // .defaults.istio_version // \"1.30.0\"" "${config_file}")
     package_type=$(jq -r ".sets[${index}].package_type // .defaults.package_type // \"deb\"" "${config_file}")
     prove=$(jq -r ".sets[${index}].prove // false" "${config_file}")
     previous_label=$(jq -r ".sets[${index}].previous_label // \"\"" "${config_file}")
@@ -305,11 +312,11 @@ for index in $(seq 0 "$((set_count - 1))"); do
         [ "${#components[@]}" -gt 0 ] || fail "matrix set ${label} has no components"
         for component in "${components[@]}"; do
             log "Building ${component} for ${label}"
-            build_component "${component}" "${kube_version}" "${etcd_version}" "${flannel_version}" "${calico_version}" "${package_type}"
+            build_component "${component}" "${kube_version}" "${etcd_version}" "${flannel_version}" "${calico_version}" "${istio_version}" "${package_type}"
         done
     fi
 
-    assemble_set "${label}" "${kube_version}" "${etcd_version}" "${flannel_version}" "${calico_version}" "${package_type}" "${artifact_dir}" "${repo_dir}" "${bundle}"
+    assemble_set "${label}" "${kube_version}" "${etcd_version}" "${flannel_version}" "${calico_version}" "${istio_version}" "${package_type}" "${artifact_dir}" "${repo_dir}" "${bundle}"
 
     if [ "${prove}" = "true" ]; then
         previous_args=()

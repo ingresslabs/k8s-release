@@ -11,8 +11,8 @@ package repositories, install helpers, a verification policy, and bundle-level
 checksums.
 
 Examples:
-  scripts/create-airgap-bundle.sh v1.32.2 --airgap
-  scripts/create-airgap-bundle.sh v1.32.2 --artifacts release-artifacts --repos package-repositories --output k8s-v1.32.2-airgap.tar
+  scripts/create-airgap-bundle.sh v1.36.1 --airgap
+  scripts/create-airgap-bundle.sh v1.36.1 --artifacts release-artifacts --repos package-repositories --output k8s-v1.36.1-airgap.tar
 EOF
 }
 
