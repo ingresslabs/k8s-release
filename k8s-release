@@ -10,7 +10,7 @@ Usage:
   k8s-release verify-bundle <bundle.tar> [--repo OWNER/REPO] [--online]
   k8s-release verify-proof <release-proof.json>
   k8s-release passport <version> [--artifacts DIR] [--repos DIR] [--output FILE]
-  k8s-release prove <version> [--previous VERSION] [--policy FILE]
+  k8s-release prove <version> [--previous VERSION] [--policy FILE] [--host HOST]
   k8s-release prove-matrix --config FILE [--work-dir DIR]
   k8s-release airgap <prepare|verify|import> ...
   k8s-release version
@@ -24,6 +24,7 @@ Examples:
   k8s-release verify-bundle k8s-v1.36.1-airgap.tar
   k8s-release verify-proof release-artifacts/release-proof.json
   k8s-release prove v1.36.1 --previous v1.36.0
+  k8s-release prove v1.36.1 --host root@proof-host --previous v1.36.0
   k8s-release prove-matrix --config docs/release-proof-matrix.example.json
   k8s-release airgap import k8s-v1.36.1-airgap.tar --repo /mnt/mirror
 EOF

@@ -102,6 +102,7 @@ verify_listed_checksums() {
 verify_listed_checksums '.artifacts.package_checksums' packages
 verify_listed_checksums '.artifacts.sbom_references' SBOM
 verify_listed_checksums '.artifacts.release_manifests' manifests
+verify_listed_checksums '(.artifacts.cluster_smoke_artifacts // [])' remote-cluster-smoke
 verify_listed_checksums '.artifacts.evidence_reports' evidence
 
 if [ -f "${evidence_tar}" ]; then
