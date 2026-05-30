@@ -2,9 +2,9 @@ name: Continuous Improvement
 
 on:
   push:
-    branches: [ main ]
+    branches: [ devel, main ]
   pull_request:
-    branches: [ main ]
+    branches: [ devel, main ]
   workflow_dispatch:
   schedule:
     - cron: '17 3 * * 1'

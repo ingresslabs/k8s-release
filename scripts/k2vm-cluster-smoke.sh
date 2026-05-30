@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f ./.env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -91,6 +98,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+[ -n "${host}" ] || host=${K8S_RELEASE_PROOF_HOST:-}
 [ -n "${host}" ] || { echo "ERROR: --host is required." >&2; exit 2; }
 [ -n "${artifact_dir}" ] || { echo "ERROR: --artifacts is required." >&2; exit 2; }
 [ -n "${repo_dir}" ] || { echo "ERROR: --repos is required." >&2; exit 2; }

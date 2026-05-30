@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f ./.env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -119,6 +126,13 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+if [ -z "${proof_host}" ]; then
+    proof_host=${K8S_RELEASE_PROOF_HOST:-}
+fi
+if [ -z "${proof_remote_dir}" ]; then
+    proof_remote_dir=${K8S_RELEASE_PROOF_REMOTE_DIR:-}
+fi
 
 if [ -z "${proof_host}" ] && { [ -n "${proof_remote_dir}" ] || [ "${keep_proof_remote}" -eq 1 ]; }; then
     echo "ERROR: --remote-dir and --keep-remote require --host." >&2
