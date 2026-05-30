@@ -9,34 +9,39 @@ all: $(shell mkdir -p output)
 KUBE_BUILDER ?= 0
 
 # Define the Kubernetes version to use
-KUBE_VERSION ?= v1.32.2
+KUBE_VERSION ?= v1.36.1
 PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 1.0.0)
 KUBE_AIRGAP_BUNDLE ?= k8s-$(KUBE_VERSION)-airgap.tar
 PREVIOUS_KUBE_VERSION ?=
 RELEASE_PROOF_MATRIX ?= docs/release-proof-matrix.example.json
 
 # Define the etcd version to use
-ETCD_VERSION ?= v3.5.9
+ETCD_VERSION ?= v3.6.11
 
 
 KUBE_GIT_URL ?= https://github.com/kubernetes/kubernetes.git
 
 # Define the Flannel version to use
-FLANNEL_VERSION ?= v0.26.4
+FLANNEL_VERSION ?= v0.28.4
 FLANNEL_GIT_URL ?= https://github.com/flannel-io/flannel.git
 
 # Define the Calico version to use
-CALICO_VERSION ?= v3.28.0
+CALICO_VERSION ?= v3.32.0
 CALICO_GIT_URL ?= https://github.com/projectcalico/calico.git
+
+# Define the Istio version to use
+ISTIO_VERSION ?= 1.30.0
+ISTIO_GIT_URL ?= https://github.com/istio/istio.git
 
 # Define the certificate version to use
 CERT_VERSION ?= 1.0.0
 
 # Digest-pinned build inputs. Override these when moving to a new upstream toolchain.
-KUBE_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72
-ETCD_GO_IMAGE ?= golang:1.20-bookworm@sha256:9fa9101141c01e9440216d32eb2b380b3c3079bea07aeab3546020cc91b3662c
-FLANNEL_GO_IMAGE ?= golang:1.23.3-bookworm@sha256:59b8183301af6dc358c9258d7b2ab0ee1a9363618552334fb3b160d454cbda72
-CALICO_GO_IMAGE ?= golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+KUBE_GO_IMAGE ?= golang:1.26.2-bookworm@sha256:47ce5636e9936b2c5cbf708925578ef386b4f8872aec74a67bd13a627d242b19
+ETCD_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
+FLANNEL_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
+CALICO_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
+ISTIO_GO_IMAGE ?= golang:1.25.9-bookworm@sha256:298734aec230b5f3e8cee450ce6d7eccc39f1797ba548ee90d57e9803030c6c3
 RUNTIME_IMAGE ?= debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 DEBIAN_SNAPSHOT ?= 20260401T000000Z
 DOCKER_RETRY_ATTEMPTS ?= 3
@@ -66,6 +71,7 @@ help:
 	@echo "  build-kubectl           Build only kubectl"
 	@echo "  build-flannel           Build only flannel"
 	@echo "  build-calico            Build only calico"
+	@echo "  build-istio             Build only Istio (istioctl)"
 	@echo "  check-pinned-inputs     Verify Dockerfiles use digest-pinned base images"
 	@echo "  verify-packages         Verify packages in the output directory"
 	@echo "  smoke-install-packages  Install generated packages in clean containers"
@@ -90,20 +96,22 @@ help:
 	@echo ""
 	@echo "Variables:"
 	@echo "  FLANNEL_GIT_URL         Flannel Git repository URL (default: https://github.com/flannel-io/flannel.git)"
-	@echo "  FLANNEL_VERSION         Flannel version to use (default: v0.26.4)"
+	@echo "  FLANNEL_VERSION         Flannel version to use (default: v0.28.4)"
 	@echo "  CALICO_GIT_URL          Calico Git repository URL (default: https://github.com/projectcalico/calico.git)"
-	@echo "  CALICO_VERSION          Calico version to use (default: v3.28.0)"
+	@echo "  CALICO_VERSION          Calico version to use (default: v3.32.0)"
+	@echo "  ISTIO_GIT_URL           Istio Git repository URL (default: https://github.com/istio/istio.git)"
+	@echo "  ISTIO_VERSION           Istio version to use (default: 1.30.0)"
 	@echo "  CERT_VERSION            Certificate version to use (default: 1.0.0)"
 	@echo "  KUBE_GIT_URL            Kubernetes Git repository URL (default: https://github.com/kubernetes/kubernetes.git)"
 	@echo "  KUBE_BUILDER            Use Kubernetes to build images (default: 0, set to 1 to enable)"
 	@echo "  KUBE_BUILDER_ARM64      Use Kubernetes ARM64 builder (default: 0, set to 1 to enable)"
-	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.32.2)"
+	@echo "  KUBE_VERSION            Kubernetes version to use (default: v1.36.1)"
 	@echo "  KUBE_AIRGAP_BUNDLE      Airgap bundle path (default: k8s-$(KUBE_VERSION)-airgap.tar)"
 	@echo "  PREVIOUS_KUBE_VERSION   Previous Kubernetes version for upgrade proof"
 	@echo "  RELEASE_PROOF_MATRIX    JSON matrix file for prove-matrix"
 	@echo "  AIRGAP_REPO             Local mirror directory for airgap-import"
 	@echo "  PROJECT_VERSION         Project release version (default: $(PROJECT_VERSION))"
-	@echo "  ETCD_VERSION            Etcd version to use (default: v3.5.9)"
+	@echo "  ETCD_VERSION            Etcd version to use (default: v3.6.11)"
 	@echo "  PACKAGE_TYPE            Package type to build (deb, rpm, or all; default: deb)"
 	@echo "  COMPOSE_DOCKER_CLI_BUILD Enable Docker CLI build (set to 1)"
 	@echo "  DOCKER_BUILDKIT          Enable BuildKit for Docker builds (set to 1)"
@@ -111,6 +119,7 @@ help:
 	@echo "  ETCD_GO_IMAGE            Digest-pinned Go image for etcd builds"
 	@echo "  FLANNEL_GO_IMAGE         Digest-pinned Go image for Flannel builds"
 	@echo "  CALICO_GO_IMAGE          Digest-pinned Go image for Calico builds"
+	@echo "  ISTIO_GO_IMAGE           Digest-pinned Go image for Istio builds"
 	@echo "  RUNTIME_IMAGE            Digest-pinned runtime/package image"
 	@echo "  DEBIAN_SNAPSHOT          Debian snapshot timestamp for apt package resolution"
 	@echo "  DOCKER_RETRY_ATTEMPTS    Retry count for Docker build/up commands (default: 3)"
@@ -254,10 +263,13 @@ define DOCKER_ARGS
     FLANNEL_VERSION=$(FLANNEL_VERSION) \
     CALICO_GIT_URL=$(CALICO_GIT_URL) \
     CALICO_VERSION=$(CALICO_VERSION) \
+    ISTIO_GIT_URL=$(ISTIO_GIT_URL) \
+    ISTIO_VERSION=$(ISTIO_VERSION) \
     KUBE_GO_IMAGE='$(KUBE_GO_IMAGE)' \
     ETCD_GO_IMAGE='$(ETCD_GO_IMAGE)' \
     FLANNEL_GO_IMAGE='$(FLANNEL_GO_IMAGE)' \
     CALICO_GO_IMAGE='$(CALICO_GO_IMAGE)' \
+    ISTIO_GO_IMAGE='$(ISTIO_GO_IMAGE)' \
     RUNTIME_IMAGE='$(RUNTIME_IMAGE)' \
     DEBIAN_SNAPSHOT=$(DEBIAN_SNAPSHOT) \
     SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -379,6 +391,14 @@ build-calico: switch-builder
 	@$(eval START_TIME := $(shell date +%s))
 	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build calico-builder
 	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up calico-builder
+	@$(BUILD_INFO)
+
+.PHONY: build-istio
+build-istio: switch-builder
+	@echo "Building istio..."
+	@$(eval START_TIME := $(shell date +%s))
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) build istio-builder
+	$(DOCKER_ARGS) ./scripts/run-with-retries.sh --attempts $(DOCKER_RETRY_ATTEMPTS) --delay $(DOCKER_RETRY_DELAY_SECONDS) $(DOCKER_COMPOSE) up istio-builder
 	@$(BUILD_INFO)
 
 .PHONY: build-certificates

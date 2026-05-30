@@ -38,6 +38,7 @@ count_files() {
     echo "- etcd: ${ETCD_VERSION:-$(value_from_makefile ETCD_VERSION)}"
     echo "- Flannel: ${FLANNEL_VERSION:-$(value_from_makefile FLANNEL_VERSION)}"
     echo "- Calico: ${CALICO_VERSION:-$(value_from_makefile CALICO_VERSION)}"
+    echo "- Istio: ${ISTIO_VERSION:-$(value_from_makefile ISTIO_VERSION)}"
     echo
     echo "## Build Inputs"
     echo

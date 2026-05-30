@@ -352,9 +352,12 @@ cat >> ${RPM_BUILD_DIR}/SPECS/${BINARY_NAME}.spec << EOF
 EOF
 
 # Build the RPM package
+# Disable RPM build-id symlink generation so identical binaries packaged under
+# different names do not collide on /usr/lib/.build-id during install.
 rpmbuild \
     --define "_topdir ${RPM_BUILD_DIR}" \
     --define "_buildhost k8s-release" \
+    --define "_build_id_links none" \
     --define "source_date_epoch ${SOURCE_DATE_EPOCH}" \
     --define "use_source_date_epoch_as_buildtime 1" \
     --define "clamp_mtime_to_source_date_epoch 1" \

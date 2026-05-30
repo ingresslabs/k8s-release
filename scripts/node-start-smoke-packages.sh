@@ -21,7 +21,7 @@ fi
 
 tmp_dir=$(mktemp -d)
 cleanup() {
-    rm -rf "${tmp_dir}"
+    rm -rf "${tmp_dir}" >/dev/null 2>&1 || sudo -n rm -rf "${tmp_dir}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -45,6 +45,15 @@ fail() {
     exit 1
 }
 
+run_with_timeout() {
+    local duration=$1
+    local description=$2
+    shift 2
+    if ! timeout "${duration}" "$@"; then
+        fail "${description} failed or timed out after ${duration}"
+    fi
+}
+
 pids=()
 names=()
 
@@ -58,9 +67,26 @@ dump_logs() {
 }
 
 cleanup_processes() {
-    local pid
+    local pid remaining
     for pid in "${pids[@]}"; do
         kill "${pid}" >/dev/null 2>&1 || true
+    done
+    for _ in $(seq 1 10); do
+        remaining=0
+        for pid in "${pids[@]}"; do
+            if kill -0 "${pid}" >/dev/null 2>&1; then
+                remaining=1
+                break
+            fi
+        done
+        if [ "${remaining}" -eq 0 ]; then
+            wait >/dev/null 2>&1 || true
+            return
+        fi
+        sleep 1
+    done
+    for pid in "${pids[@]}"; do
+        kill -9 "${pid}" >/dev/null 2>&1 || true
     done
     wait >/dev/null 2>&1 || true
 }
@@ -71,8 +97,9 @@ install_packages() {
         deb)
             log "Installing DEB package set"
             export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y \
+            run_with_timeout "${NODE_SMOKE_PACKAGE_TIMEOUT:-5m}" "apt-get update" apt-get update
+            run_with_timeout "${NODE_SMOKE_PACKAGE_TIMEOUT:-5m}" "apt-get install dependencies" \
+                apt-get install -y \
                 ca-certificates \
                 conntrack \
                 containerd \
@@ -87,11 +114,13 @@ install_packages() {
                 socat
             mapfile -t packages < <(find /packages -maxdepth 1 -type f -name '*.deb' ! -name '*certs*.deb' | sort)
             [ "${#packages[@]}" -gt 0 ] || fail "no non-certificate DEB packages found"
-            apt-get install -y "${packages[@]}"
+            run_with_timeout "${NODE_SMOKE_PACKAGE_TIMEOUT:-5m}" "apt-get install smoke packages" \
+                apt-get install -y "${packages[@]}"
             ;;
         rpm)
             log "Installing RPM package set"
-            dnf install -y --allowerasing \
+            run_with_timeout "${NODE_SMOKE_PACKAGE_TIMEOUT:-5m}" "dnf install dependencies" \
+                dnf install -y --allowerasing \
                 ca-certificates \
                 conntrack-tools \
                 findutils \
@@ -104,7 +133,8 @@ install_packages() {
                 systemd
             mapfile -t packages < <(find /packages -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' | sort)
             [ "${#packages[@]}" -gt 0 ] || fail "no non-certificate RPM packages found"
-            dnf install -y --allowerasing "${packages[@]}"
+            run_with_timeout "${NODE_SMOKE_PACKAGE_TIMEOUT:-5m}" "dnf install smoke packages" \
+                dnf install -y --allowerasing "${packages[@]}"
             ;;
         *)
             fail "unsupported package format ${package_format}"
@@ -365,12 +395,14 @@ start_controller_manager() {
 }
 
 start_kube_proxy() {
-    kubectl --kubeconfig="${workdir}/admin.kubeconfig" apply -f - <<'EOF'
+    cat > "${workdir}/smoke-node.yaml" <<'EOF'
 apiVersion: v1
 kind: Node
 metadata:
   name: smoke-node
 EOF
+    run_with_timeout "${NODE_SMOKE_KUBECTL_TIMEOUT:-30s}" "create smoke node" \
+        kubectl --kubeconfig="${workdir}/admin.kubeconfig" apply -f "${workdir}/smoke-node.yaml"
 
     cat > "${workdir}/kube-proxy-config.yaml" <<EOF
 kind: KubeProxyConfiguration
@@ -432,10 +464,16 @@ verify_installed_binaries() {
     for bin in etcd etcdctl kube-apiserver kube-controller-manager kube-scheduler kubectl kube-proxy; do
         command -v "${bin}" >/dev/null || fail "${bin} is not installed"
     done
-    if command -v kubelet >/dev/null 2>&1; then
-        kubelet --version
+    if command -v istioctl >/dev/null 2>&1; then
+        timeout 20s istioctl version --remote=false >/dev/null 2>&1 || \
+            timeout 20s istioctl version >/dev/null 2>&1 || \
+            timeout 20s istioctl --help >/dev/null 2>&1 || \
+            fail "istioctl smoke check failed"
     fi
-    kubectl version --client=true --output=yaml
+    if command -v kubelet >/dev/null 2>&1; then
+        timeout 20s kubelet --version
+    fi
+    timeout 20s kubectl version --client=true --output=yaml
 }
 
 install_packages
@@ -455,21 +493,44 @@ log "Node start smoke test passed for ${package_format} packages"
 INNER
 chmod +x "${tmp_dir}/node-start-smoke-inner.sh"
 
+dump_shared_logs() {
+    local log_dir=$1
+    for log_file in "${log_dir}"/*.log; do
+        [ -f "${log_file}" ] || continue
+        echo
+        echo "===== $(basename "${log_file}") ====="
+        tail -n 120 "${log_file}" || true
+    done
+}
+
 run_in_node_container() {
     local image=$1
     local format=$2
+    local workdir="${tmp_dir}/${format}-workdir"
 
-    docker run --rm \
-        --pull=always \
-        --privileged \
-        --cgroupns=host \
-        --tmpfs /run \
-        --tmpfs /run/lock \
-        -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-        -v "${artifact_dir}:/packages:ro" \
-        -v "${tmp_dir}:/smoke:ro" \
-        "${image}" \
-        bash /smoke/node-start-smoke-inner.sh "${format}"
+    mkdir -p "${workdir}"
+
+    timeout --kill-after=30s "${NODE_SMOKE_CONTAINER_TIMEOUT:-15m}" \
+        docker run --rm \
+            --pull=always \
+            --privileged \
+            --cgroupns=host \
+            --tmpfs /run \
+            --tmpfs /run/lock \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -v "${artifact_dir}:/packages:ro" \
+            -v "${tmp_dir}:/smoke:ro" \
+            -v "${workdir}:/tmp/k8s-node-smoke" \
+            "${image}" \
+            bash /smoke/node-start-smoke-inner.sh "${format}"
+    local rc=$?
+    if [ "${rc}" -ne 0 ]; then
+        if [ "${rc}" -eq 124 ]; then
+            echo "ERROR: node smoke container for ${format} packages timed out after ${NODE_SMOKE_CONTAINER_TIMEOUT:-15m}."
+        fi
+        dump_shared_logs "${workdir}"
+        return "${rc}"
+    fi
 }
 
 run_smoke() {

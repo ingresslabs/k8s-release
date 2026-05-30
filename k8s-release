@@ -17,15 +17,15 @@ Usage:
   k8s-release components
 
 Examples:
-  k8s-release build v1.32.2 --component kubelet --format deb,rpm
-  k8s-release build v3.5.9 --component etcd --format rpm
-  k8s-release verify-release v1.32.2
-  k8s-release bundle v1.32.2 --airgap
-  k8s-release verify-bundle k8s-v1.32.2-airgap.tar
+  k8s-release build v1.36.1 --component kubelet --format deb,rpm
+  k8s-release build v3.6.11 --component etcd --format rpm
+  k8s-release verify-release v1.36.1
+  k8s-release bundle v1.36.1 --airgap
+  k8s-release verify-bundle k8s-v1.36.1-airgap.tar
   k8s-release verify-proof release-artifacts/release-proof.json
-  k8s-release prove v1.32.2 --previous v1.32.1
+  k8s-release prove v1.36.1 --previous v1.36.0
   k8s-release prove-matrix --config docs/release-proof-matrix.example.json
-  k8s-release airgap import k8s-v1.32.2-airgap.tar --repo /mnt/mirror
+  k8s-release airgap import k8s-v1.36.1-airgap.tar --repo /mnt/mirror
 EOF
 }
 
@@ -40,6 +40,7 @@ kube-apiserver
 kubectl
 flannel
 calico
+istio
 certificates
 EOF
 }
@@ -166,6 +167,9 @@ case "${component}" in
         ;;
     calico)
         exec make build-calico CALICO_VERSION="${version}" PACKAGE_TYPE="${package_type}"
+        ;;
+    istio)
+        exec make build-istio ISTIO_VERSION="${version}" PACKAGE_TYPE="${package_type}"
         ;;
     certificates)
         exec make build-certificates CERT_VERSION="${version#v}" PACKAGE_TYPE="${package_type}"
