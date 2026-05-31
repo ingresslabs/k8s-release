@@ -8,6 +8,18 @@ airgap bundles.
 Use it when you need controlled Kubernetes package delivery for private,
 regulated, or disconnected environments.
 
+Prerequisites:
+
+- `git`, `make`, Bash, and standard Unix command-line utilities.
+- Docker Engine with the Compose plugin and Buildx enabled. The default build
+  path uses Docker Buildx and Docker Compose.
+- Network access to GitHub, container registries, and Debian snapshot mirrors
+  when building packages from upstream source.
+- For signed package repositories, airgap bundles, and release proof checks:
+  `gpg`, `jq`, `dpkg-dev`/`dpkg-deb`, `rpm`, and `createrepo_c`.
+- Optional release and lab helpers use the GitHub CLI (`gh`), `cosign`, `oras`,
+  `terraform`, `ssh`, `scp`, `curl`, and `unzip`.
+
 Common commands:
 
 ```bash
