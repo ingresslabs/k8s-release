@@ -1,0 +1,7 @@
+name = "selinux-istio-argocd-lab"
+
+# Leave target_host empty to use K8S_RELEASE_PROOF_HOST from ../../.env.
+target_host = ""
+
+github_run_id = 26680027183
+
