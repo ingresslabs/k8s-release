@@ -381,7 +381,7 @@ gpg --dearmor < /repo/repo-signing-key.asc > /usr/share/keyrings/k8s-release.gpg
 chmod 0644 /usr/share/keyrings/k8s-release.gpg
 printf 'deb [signed-by=/usr/share/keyrings/k8s-release.gpg] file:/repo/debian stable main\n' > /etc/apt/sources.list.d/k8s-release.list
 apt-get update
-mapfile -t packages < <(find /artifacts -maxdepth 1 -type f -name '*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
+mapfile -t packages < <(find /artifacts -maxdepth 1 -type f -name '*.deb' ! -name '*certs*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
 [ "\${#packages[@]}" -gt 0 ] || { echo "ERROR: no DEB packages found" >&2; exit 1; }
 printf 'Installing from signed apt repository: %s\n' "\${packages[*]}"
 apt-get install -y "\${packages[@]}"
@@ -409,7 +409,7 @@ repo_gpgcheck=1
 gpgkey=file:///repo/repo-signing-key.asc
 REPO
 dnf makecache --disablerepo='*' --enablerepo=k8s-release
-mapfile -t packages < <(find /artifacts -maxdepth 1 -type f -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
+mapfile -t packages < <(find /artifacts -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
 [ "\${#packages[@]}" -gt 0 ] || { echo "ERROR: no RPM packages found" >&2; exit 1; }
 printf 'Installing from signed yum repository: %s\n' "\${packages[*]}"
 dnf install -y --disablerepo='*' --enablerepo=k8s-release "\${packages[@]}"
@@ -421,14 +421,14 @@ INNER
 signed_repo_install_smoke() {
     local ran=0
 
-    if find "${artifact_dir}" -maxdepth 1 -type f -name '*.deb' | grep -q .; then
+    if find "${artifact_dir}" -maxdepth 1 -type f -name '*.deb' ! -name '*certs*.deb' | grep -q .; then
         [ -d "${repo_dir}/debian" ] || { echo "ERROR: Debian repository missing from ${repo_dir}" >&2; exit 1; }
         echo "Running signed apt repository install smoke"
         run_deb_repo_install_smoke
         ran=1
     fi
 
-    if find "${artifact_dir}" -maxdepth 1 -type f -name '*.rpm' | grep -q .; then
+    if find "${artifact_dir}" -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' | grep -q .; then
         [ -d "${repo_dir}/rpm" ] || { echo "ERROR: RPM repository missing from ${repo_dir}" >&2; exit 1; }
         echo "Running signed yum repository install smoke"
         run_rpm_repo_install_smoke
@@ -548,7 +548,7 @@ gpg --dearmor < /previous-repo/repo-signing-key.asc > /usr/share/keyrings/k8s-re
 chmod 0644 /usr/share/keyrings/k8s-release.gpg
 printf 'deb [signed-by=/usr/share/keyrings/k8s-release.gpg] file:/previous-repo/debian stable main\n' > /etc/apt/sources.list.d/k8s-release.list
 apt-get update
-mapfile -t previous_packages < <(find /previous-artifacts -maxdepth 1 -type f -name '*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
+mapfile -t previous_packages < <(find /previous-artifacts -maxdepth 1 -type f -name '*.deb' ! -name '*certs*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
 [ "\${#previous_packages[@]}" -gt 0 ] || { echo "ERROR: no previous DEB packages found" >&2; exit 1; }
 apt-get install -y "\${previous_packages[@]}"
 dpkg-query -W -f='previous \${Package} \${Version} \${Architecture}\n' "\${previous_packages[@]}" | sort
@@ -557,7 +557,7 @@ gpg --dearmor < /current-repo/repo-signing-key.asc > /usr/share/keyrings/k8s-rel
 mv /usr/share/keyrings/k8s-release.gpg.new /usr/share/keyrings/k8s-release.gpg
 printf 'deb [signed-by=/usr/share/keyrings/k8s-release.gpg] file:/current-repo/debian stable main\n' > /etc/apt/sources.list.d/k8s-release.list
 apt-get update
-mapfile -t current_packages < <(find /current-artifacts -maxdepth 1 -type f -name '*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
+mapfile -t current_packages < <(find /current-artifacts -maxdepth 1 -type f -name '*.deb' ! -name '*certs*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
 [ "\${#current_packages[@]}" -gt 0 ] || { echo "ERROR: no current DEB packages found" >&2; exit 1; }
 apt-get install -y "\${current_packages[@]}"
 dpkg-query -W -f='current \${Package} \${Version} \${Architecture}\n' "\${current_packages[@]}" | sort
@@ -611,7 +611,7 @@ repo_gpgcheck=1
 gpgkey=file:///previous-repo/repo-signing-key.asc
 REPO
 dnf makecache --disablerepo='*' --enablerepo=k8s-release
-mapfile -t previous_packages < <(find /previous-artifacts -maxdepth 1 -type f -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
+mapfile -t previous_packages < <(find /previous-artifacts -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
 [ "\${#previous_packages[@]}" -gt 0 ] || { echo "ERROR: no previous RPM packages found" >&2; exit 1; }
 dnf install -y --disablerepo='*' --enablerepo=k8s-release "\${previous_packages[@]}"
 rpm -q "\${previous_packages[@]}" | sed 's/^/previous /' | sort
@@ -627,7 +627,7 @@ gpgkey=file:///current-repo/repo-signing-key.asc
 REPO
 dnf clean all
 dnf makecache --disablerepo='*' --enablerepo=k8s-release
-mapfile -t current_packages < <(find /current-artifacts -maxdepth 1 -type f -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
+mapfile -t current_packages < <(find /current-artifacts -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
 [ "\${#current_packages[@]}" -gt 0 ] || { echo "ERROR: no current RPM packages found" >&2; exit 1; }
 dnf install -y --disablerepo='*' --enablerepo=k8s-release "\${current_packages[@]}"
 rpm -q "\${current_packages[@]}" | sed 's/^/current /' | sort

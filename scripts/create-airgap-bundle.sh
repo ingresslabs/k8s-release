@@ -273,11 +273,11 @@ if [ "${#packages[@]}" -eq 0 ]; then
     bundle_dir=$(cd "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
     artifact_dir="${bundle_dir}/release-artifacts"
     if command -v apt-get >/dev/null 2>&1; then
-        mapfile -t packages < <(find "${artifact_dir}" -maxdepth 1 -type f -name '*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
+        mapfile -t packages < <(find "${artifact_dir}" -maxdepth 1 -type f -name '*.deb' ! -name '*certs*.deb' -exec dpkg-deb --field {} Package \; | sort -u)
     elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-        mapfile -t packages < <(find "${artifact_dir}" -maxdepth 1 -type f -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
+        mapfile -t packages < <(find "${artifact_dir}" -maxdepth 1 -type f -name '*.rpm' ! -name '*certs*.rpm' -exec rpm -qp --queryformat '%{NAME}\n' {} \; | sort -u)
     fi
-    [ "${#packages[@]}" -gt 0 ] || { echo "ERROR: could not infer packages from ${artifact_dir}" >&2; exit 1; }
+    [ "${#packages[@]}" -gt 0 ] || { echo "ERROR: could not infer non-certificate packages from ${artifact_dir}; pass package names explicitly" >&2; exit 1; }
 fi
 
 if command -v apt-get >/dev/null 2>&1; then

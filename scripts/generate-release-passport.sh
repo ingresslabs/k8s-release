@@ -133,7 +133,7 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
         echo "sudo install -m 0644 package-repositories/repo-signing-key.asc /usr/share/keyrings/k8s-release.asc"
         echo "printf 'deb [signed-by=/usr/share/keyrings/k8s-release.asc] file:%s stable main\\n' \"\$(pwd)/package-repositories/debian\" | sudo tee /etc/apt/sources.list.d/k8s-release.list"
         echo "sudo apt-get update"
-        echo "packages=\$(find release-artifacts -maxdepth 1 -name '*.deb' -exec dpkg-deb --field {} Package \\; | sort -u | tr '\\n' ' ')"
+        echo "packages=\$(find release-artifacts -maxdepth 1 -name '*.deb' ! -name '*certs*.deb' -exec dpkg-deb --field {} Package \\; | sort -u | tr '\\n' ' ')"
         echo "sudo apt-get install -y \${packages}"
         echo '```'
         echo
@@ -151,7 +151,7 @@ install_reports=$(list_files "${artifact_dir}" '*-install-smoke.txt' || true)
         echo "repo_gpgcheck=1"
         echo "gpgkey=file://\$(pwd)/package-repositories/repo-signing-key.asc"
         echo "REPO"
-        echo "packages=\$(find release-artifacts -maxdepth 1 -name '*.rpm' -exec rpm -qp --queryformat '%{NAME}\\n' {} \\; | sort -u | tr '\\n' ' ')"
+        echo "packages=\$(find release-artifacts -maxdepth 1 -name '*.rpm' ! -name '*certs*.rpm' -exec rpm -qp --queryformat '%{NAME}\\n' {} \\; | sort -u | tr '\\n' ' ')"
         echo "sudo dnf install -y \${packages}"
         echo '```'
         echo

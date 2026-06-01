@@ -93,11 +93,11 @@ default_repo() {
     local remote
     remote=$(git remote get-url origin 2>/dev/null || true)
     case "${remote}" in
-        https://github.com/*/*.git)
+        https://github.com/*/*)
             remote=${remote#https://github.com/}
             printf '%s\n' "${remote%.git}"
             ;;
-        git@github.com:*.git)
+        git@github.com:*)
             remote=${remote#git@github.com:}
             printf '%s\n' "${remote%.git}"
             ;;
@@ -129,7 +129,7 @@ if [ -z "${artifact_dir}" ]; then
     artifact_dir="${tmp_dir}/release-artifacts"
     mkdir -p "${artifact_dir}"
     log "Downloading ${repo}@${tag} release assets"
-    gh release download "${tag}" --repo "${repo}" --dir "${artifact_dir}" --pattern '*' --clobber
+    gh release download "${tag}" --repo "${repo}" --dir "${artifact_dir}" --pattern '*'
 else
     artifact_dir=$(cd "${artifact_dir}" && pwd)
 fi

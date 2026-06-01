@@ -169,12 +169,12 @@ write_spdx() {
               copyrightText: "NOASSERTION"
             }'
         done |
-        jq -s --arg label "${label}" '{
+        jq -s --arg matrix_label "${label}" '{
           spdxVersion: "SPDX-2.3",
           dataLicense: "CC0-1.0",
           SPDXID: "SPDXRef-DOCUMENT",
-          name: ("k8s-release-" + $label),
-          documentNamespace: ("https://example.invalid/k8s-release/" + $label),
+          name: ("k8s-release-" + $matrix_label),
+          documentNamespace: ("https://example.invalid/k8s-release/" + $matrix_label),
           creationInfo: {
             created: "1970-01-01T00:00:00Z",
             creators: ["Tool: k8s-release prove-release-matrix"]
@@ -322,7 +322,7 @@ for index in $(seq 0 "$((set_count - 1))"); do
         previous_args=()
         if [ -n "${previous_label}" ]; then
             previous_safe=$(safe_label "${previous_label}")
-            previous_version=$(jq -r --arg label "${previous_label}" '.sets[] | select(.label == $label) | .kube_version' "${config_file}" | head -n 1)
+            previous_version=$(jq -r --arg previous_label "${previous_label}" '.sets[] | select(.label == $previous_label) | .kube_version' "${config_file}" | head -n 1)
             [ -n "${previous_version}" ] || fail "previous_label not found: ${previous_label}"
             previous_args=(
                 --previous "${previous_version}"
